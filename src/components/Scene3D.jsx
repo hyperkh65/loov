@@ -5,7 +5,7 @@ import * as THREE from 'three'
 // ─────────────────────────────────────────────
 // 트랙 LED 조명 유닛 (사진과 동일한 형태)
 // ─────────────────────────────────────────────
-function TrackLED({ position, targetOffset = [0, 0, 0], color = '#fff5e0', delay = 0, intensity = 8 }) {
+function TrackLED({ position, targetOffset = [0, 0, 0], color = '#fff5e0', delay = 0, intensity = 40, castShadow = false }) {
     const groupRef = useRef()
     const spotRef = useRef()
     const lensRef = useRef()
@@ -29,17 +29,17 @@ function TrackLED({ position, targetOffset = [0, 0, 0], color = '#fff5e0', delay
 
         // 밝기 애니메이션
         if (on) {
-            brightRef.current = Math.min(brightRef.current + delta * 2.5, 1)
+            brightRef.current = Math.min(brightRef.current + delta * 3.0, 1)
         }
         const b = brightRef.current
 
         // 플리커 (켜지는 중일 때만)
-        const flicker = b < 0.95
-            ? (Math.random() > 0.4 ? b : b * 0.2)
-            : b * (1 + Math.sin(state.clock.getElapsedTime() * 120) * 0.005)
+        const flicker = b < 0.9
+            ? (Math.random() > 0.35 ? b : b * 0.15)
+            : 1.0
 
         spotRef.current.intensity = flicker * intensity
-        lensRef.current.material.emissiveIntensity = flicker * 6
+        lensRef.current.material.emissiveIntensity = flicker * 10
     })
 
     return (
@@ -99,13 +99,25 @@ function TrackLED({ position, targetOffset = [0, 0, 0], color = '#fff5e0', delay
                 target-position={targetOffset}
                 color={color}
                 intensity={0}
-                angle={0.3}
-                penumbra={0.5}
-                distance={16}
-                decay={1.8}
-                castShadow
+                angle={0.35}
+                penumbra={0.6}
+                distance={20}
+                decay={1.5}
+                castShadow={castShadow}
                 shadow-mapSize-width={512}
                 shadow-mapSize-height={512}
+            />
+            {/* 보조 포인트라이트 - 주변 확실히 밝힘 */}
+            <pointLight
+                color={color}
+                intensity={0}
+                distance={12}
+                decay={2}
+                ref={(ref) => {
+                    if (ref) {
+                        ref.intensity = brightRef.current * (intensity * 0.3)
+                    }
+                }}
             />
         </group>
     )
@@ -275,21 +287,21 @@ export default function Scene3D() {
     // 트랙 LED 배치 (트랙 레일 위 위치, 아래로 조명 방향)
     const trackLights = [
         // 앞줄 레일 (-6 x)
-        { pos: [-6, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 300, intensity: 10 },
-        { pos: [-6, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 700, intensity: 10 },
-        { pos: [-6, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1100, intensity: 8 },
+        { pos: [-6, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 300, intensity: 45 },
+        { pos: [-6, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 700, intensity: 45 },
+        { pos: [-6, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1100, intensity: 40 },
         // (-2 x)
-        { pos: [-2, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 450, intensity: 10 },
-        { pos: [-2, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 850, intensity: 10 },
-        { pos: [-2, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1250, intensity: 8 },
+        { pos: [-2, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 450, intensity: 45 },
+        { pos: [-2, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 850, intensity: 45 },
+        { pos: [-2, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1250, intensity: 40 },
         // (2 x)
-        { pos: [2, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 380, intensity: 10 },
-        { pos: [2, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 780, intensity: 10 },
-        { pos: [2, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1180, intensity: 8 },
+        { pos: [2, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 380, intensity: 45 },
+        { pos: [2, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 780, intensity: 45 },
+        { pos: [2, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1180, intensity: 40 },
         // (6 x)
-        { pos: [6, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 580, intensity: 10 },
-        { pos: [6, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 980, intensity: 10 },
-        { pos: [6, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1380, intensity: 8 },
+        { pos: [6, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 580, intensity: 45 },
+        { pos: [6, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 980, intensity: 45 },
+        { pos: [6, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1380, intensity: 40 },
     ]
 
     return (
@@ -307,8 +319,8 @@ export default function Scene3D() {
                 <color attach="background" args={['#020208']} />
                 <fog attach="fog" args={['#01010a', 12, 38]} />
 
-                {/* 극소 앰비언트 (완전 암흑 분위기) */}
-                <ambientLight intensity={0.06} color="#0a0a30" />
+                {/* 환경광 - 공간이 바로 보이도록 */}
+                <ambientLight intensity={0.25} color="#0a0a30" />
 
                 {/* ── 트랙 LED 조명 ── */}
                 {trackLights.map((l, i) => (
@@ -319,6 +331,7 @@ export default function Scene3D() {
                         color={l.color}
                         delay={l.delay}
                         intensity={l.intensity}
+                        castShadow={i < 3}  // 앞 3개만 그림자 (성능)
                     />
                 ))}
 
