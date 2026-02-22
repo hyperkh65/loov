@@ -25,7 +25,10 @@ export default function Board() {
                 .from('posts')
                 .select('*')
                 .order('created_at', { ascending: false })
-            if (!error) setData(dbData)
+            if (!error) setData(dbData || [])
+            else setData([])
+        } catch (e) {
+            setData([])
         } finally {
             setLoading(false)
         }
@@ -147,7 +150,7 @@ export default function Board() {
                             >
                                 게시글 로딩 중...
                             </motion.div>
-                        ) : data.length === 0 ? (
+                        ) : !data || data.length === 0 ? (
                             <motion.div
                                 initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                                 className="glass-panel" style={{ textAlign: 'center', opacity: 0.5, padding: 60 }}

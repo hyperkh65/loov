@@ -96,8 +96,13 @@ button {
 }
 
 @keyframes scan {
-  from { top: -100%; }
-  to { top: 100%; }
+  from {
+    top: -100%;
+  }
+
+  to {
+    top: 100%;
+  }
 }
 
 .stat-card {
@@ -124,12 +129,15 @@ button {
   background: linear-gradient(90deg, #fafafa 0%, #a1a1aa 50%, #fafafa 100%);
   background-size: 200% auto;
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   animation: shimmer 3s linear infinite;
 }
 
 @keyframes shimmer {
-  to { background-position: 200% center; }
+  to {
+    background-position: 200% center;
+  }
 }
 
 /* Premium Container Styles */

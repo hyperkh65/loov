@@ -20,8 +20,8 @@ export default function MarketAnalysis() {
     }, [])
 
     useEffect(() => {
-        if (data.length > 0) {
-            const total = data.reduce((acc, curr) => acc + curr.value, 0)
+        if (data && data.length > 0) {
+            const total = data.reduce((acc, curr) => acc + (curr.value || 0), 0)
             const analysis = data.filter(d => d.category === '분석').length
             const procurement = data.filter(d => d.category === '조달시장').length
             setStats({ total, analysis, procurement })
@@ -36,9 +36,10 @@ export default function MarketAnalysis() {
                 .select('*')
                 .order('created_at', { ascending: false })
             if (error) throw error
-            setData(dbData)
+            setData(dbData || [])
         } catch (e) {
             console.log('Error fetching data', e)
+            setData([])
         } finally {
             setLoading(false)
         }
@@ -70,16 +71,16 @@ export default function MarketAnalysis() {
         }
     }
 
-    const filteredData = activeTab === 'All' ? data : data.filter(d => d.category === activeTab);
+    const filteredData = (activeTab === 'All' ? data : data?.filter(d => d.category === activeTab)) || [];
 
     return (
         <div style={{ paddingTop: '100px', minHeight: '100vh', paddingBottom: '100px' }} className="scanline">
             <div className="container">
                 {/* Header Section */}
-                <motion.div 
+                <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="flex items-center justify-between" 
+                    className="flex items-center justify-between"
                     style={{ marginBottom: 48 }}
                 >
                     <div>
@@ -101,7 +102,7 @@ export default function MarketAnalysis() {
 
                 {/* Stats Grid */}
                 <div className="grid grid-cols-3" style={{ marginBottom: 48 }}>
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: 0.1 }}
@@ -110,14 +111,14 @@ export default function MarketAnalysis() {
                         <div style={{ color: 'var(--text-muted)', fontSize: 13, marginBottom: 8 }}>누적 거래 규모</div>
                         <div style={{ fontSize: 32, fontWeight: 800, fontFamily: 'Outfit' }}>₩ {stats.total.toLocaleString()}</div>
                         <div style={{ marginTop: 8, height: 4, background: 'rgba(255,255,255,0.1)', borderRadius: 2 }}>
-                            <motion.div 
+                            <motion.div
                                 initial={{ width: 0 }}
                                 animate={{ width: '70%' }}
                                 style={{ height: '100%', background: 'var(--primary)', borderRadius: 2 }}
                             />
                         </div>
                     </motion.div>
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: 0.2 }}
@@ -127,7 +128,7 @@ export default function MarketAnalysis() {
                         <div style={{ fontSize: 32, fontWeight: 800, fontFamily: 'Outfit' }}>{stats.analysis} <span style={{ fontSize: 14, fontWeight: 400 }}>Items</span></div>
                         <TrendingUp size={24} color="#22c55e" style={{ marginTop: 8 }} />
                     </motion.div>
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0, scale: 0.9 }}
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ delay: 0.3 }}
@@ -141,7 +142,7 @@ export default function MarketAnalysis() {
 
                 <div className="grid grid-cols-3" style={{ alignItems: 'start' }}>
                     {/* Interaction Form */}
-                    <motion.div 
+                    <motion.div
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         className="glass-panel flex-col gap-6"
@@ -183,10 +184,10 @@ export default function MarketAnalysis() {
                         <div className="flex items-center justify-between" style={{ marginBottom: 24, padding: '0 8px' }}>
                             <div className="flex gap-6">
                                 {['All', '분석', '조달시장'].map(tab => (
-                                    <button 
+                                    <button
                                         key={tab}
                                         onClick={() => setActiveTab(tab)}
-                                        style={{ 
+                                        style={{
                                             fontSize: 14, fontWeight: 600, color: activeTab === tab ? '#fff' : '#71717a',
                                             paddingBottom: 8, borderBottom: `2px solid ${activeTab === tab ? '#fff' : 'transparent'}`,
                                             transition: 'all 0.3s'
@@ -204,7 +205,7 @@ export default function MarketAnalysis() {
                         <div className="flex-col gap-4">
                             <AnimatePresence mode="popLayout">
                                 {loading ? (
-                                    <motion.div 
+                                    <motion.div
                                         key="loading"
                                         initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                         style={{ padding: 48, textAlign: 'center', color: '#a1a1aa' }}
@@ -214,8 +215,8 @@ export default function MarketAnalysis() {
                                         </motion.div>
                                         <p style={{ marginTop: 12 }}>데이터 암호화 해제 중...</p>
                                     </motion.div>
-                                ) : filteredData.length === 0 ? (
-                                    <motion.div 
+                                ) : !filteredData || filteredData.length === 0 ? (
+                                    <motion.div
                                         key="empty"
                                         initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                                         className="glass-panel" style={{ textAlign: 'center', opacity: 0.5, padding: 48 }}
@@ -224,7 +225,7 @@ export default function MarketAnalysis() {
                                     </motion.div>
                                 ) : (
                                     filteredData.map((item, index) => (
-                                        <motion.div 
+                                        <motion.div
                                             key={item.id}
                                             layout
                                             initial={{ opacity: 0, x: 20 }}
@@ -235,7 +236,7 @@ export default function MarketAnalysis() {
                                             style={{ cursor: 'pointer' }}
                                         >
                                             <div className="flex items-center gap-6">
-                                                <div style={{ 
+                                                <div style={{
                                                     width: 48, height: 48, borderRadius: '50%', background: 'rgba(255,255,255,0.03)',
                                                     display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid var(--border)'
                                                 }}>
