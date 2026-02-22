@@ -1,125 +1,91 @@
-import { useRef, useMemo, useState } from 'react'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Float, Sparkles, MeshReflectorMaterial, Environment, useCursor } from '@react-three/drei'
+import { useRef, useState, useMemo } from 'react'
+import { Canvas, useFrame } from '@react-three/fiber'
+import { Float, MeshReflectorMaterial, Environment, Sparkles } from '@react-three/drei'
 import * as THREE from 'three'
-import { EffectComposer, Bloom, ToneMapping, Vignette } from '@react-three/postprocessing'
+import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing'
 
-// Transparent interactive crystal ring
-function CrystalLedRing({ radius, thickness, color, speed, startingRot = [0, 0, 0], invert = false }) {
-    const groupRef = useRef()
-    const [hovered, setHover] = useState(false)
-    useCursor(hovered)
+// A soft, architectural glowing curve (resembles LOOV's coved lighting)
+function ArchitecturalLight({ radius, thickness, color, speed, rotation = [0, 0, 0], scale = 1 }) {
+    const meshRef = useRef()
 
-    useFrame((state, delta) => {
+    useFrame((state) => {
         const time = state.clock.getElapsedTime()
-        const mouseX = state.mouse.x * 0.5
-        const mouseY = state.mouse.y * 0.5
+        // Subtly pulse the light to make it feel "alive"
+        const pulse = 1 + Math.sin(time * speed) * 0.2
+        meshRef.current.material.emissiveIntensity = 4 * pulse
 
-        // Core rotation
-        groupRef.current.rotation.x += delta * speed * 0.15 + mouseY * 0.01
-        groupRef.current.rotation.y += delta * speed * 0.25 + mouseX * 0.01
-        groupRef.current.rotation.z += delta * speed * 0.1
-
-        // Pulsing scale
-        const targetScale = hovered ? 1.1 : 1
-        groupRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1)
+        // Gentle rotation for dynamic feel
+        meshRef.current.rotation.z += 0.001 * speed
+        meshRef.current.rotation.x = Math.sin(time * 0.5) * 0.1
     })
 
     return (
-        <group
-            ref={groupRef}
-            rotation={startingRot}
-            onPointerOver={() => setHover(true)}
-            onPointerOut={() => setHover(false)}
-        >
-            <mesh>
-                <torusGeometry args={[radius, thickness, 64, 128]} />
-                <meshPhysicalMaterial
-                    color="#ffffff"
-                    transmission={1}
-                    opacity={1}
-                    metalness={0.2}
-                    roughness={0.05}
-                    ior={1.7}
-                    thickness={0.8}
-                    specularIntensity={3}
-                    clearcoat={1}
-                />
-            </mesh>
-
-            <mesh>
-                <torusGeometry args={[radius * (invert ? 1.05 : 0.98), thickness * 0.3, 32, 128]} />
+        <group rotation={rotation} scale={scale}>
+            <mesh ref={meshRef}>
+                <torusGeometry args={[radius, thickness, 32, 100, Math.PI * 0.8]} />
                 <meshStandardMaterial
-                    color={color}
+                    color="#ffffff"
                     emissive={color}
-                    emissiveIntensity={hovered ? 8 : 4.5}
+                    emissiveIntensity={4}
                     toneMapped={false}
+                    transparent
+                    opacity={0.9}
                 />
             </mesh>
-
-            <pointLight color={color} intensity={hovered ? 8 : 4} distance={15} />
+            {/* Soft glow aura */}
+            <mesh scale={1.1}>
+                <torusGeometry args={[radius, thickness * 2, 16, 50, Math.PI * 0.8]} />
+                <meshBasicMaterial color={color} transparent opacity={0.05} blending={THREE.AdditiveBlending} />
+            </mesh>
         </group>
     )
 }
 
-function SpectacularFloor() {
+function PolishedFloor() {
     return (
-        <mesh position={[0, -5, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, -4, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[100, 100]} />
             <MeshReflectorMaterial
-                blur={[400, 100]}
-                resolution={2048}
+                blur={[300, 100]}
+                resolution={1024}
                 mixBlur={1}
-                mixStrength={80}
+                mixStrength={40}
                 roughness={0.1}
                 depthScale={1.2}
                 minDepthThreshold={0.4}
                 maxDepthThreshold={1.4}
-                color="#050505"
-                metalness={0.9}
-                mirror={1}
+                color="#f8f7f2" // Matches warm beige background
+                metalness={0.5}
             />
         </mesh>
     )
 }
 
-function CinematicCamera() {
-    const { camera, mouse } = useThree()
-    useFrame(() => {
-        camera.position.x = THREE.MathUtils.lerp(camera.position.x, mouse.x * 4, 0.05)
-        camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1 + mouse.y * 3, 0.05)
-        camera.lookAt(0, 0, 0)
-    })
-    return null
-}
-
 export default function Scene3D() {
     return (
-        <div style={{ width: '100%', height: '100vh', position: 'absolute', top: 0, left: 0, zIndex: 0, background: '#000' }}>
-            <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 1, 15], fov: 40 }}>
-                <color attach="background" args={['#000000']} />
-                <fog attach="fog" args={['#000000', 10, 40]} />
-                <ambientLight intensity={0.1} />
-                <Environment preset="night" />
+        <div style={{ width: '100%', height: '100vh', position: 'absolute', top: 0, left: 0, zIndex: 0 }}>
+            <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 2, 12], fov: 45 }}>
+                <color attach="background" args={['#edecea']} /> {/* Slightly darker warm beige for depth */}
+                <fog attach="fog" args={['#edecea', 10, 40]} />
 
-                <Float speed={1.5} rotationIntensity={0.5} floatIntensity={1}>
-                    <group position={[0, 0, 0]}>
-                        <CrystalLedRing radius={2} thickness={0.4} color="#00f2ff" speed={1} />
-                        <CrystalLedRing radius={3.5} thickness={0.2} color="#7000ff" speed={-0.6} startingRot={[Math.PI / 4, Math.PI / 4, 0]} />
-                        <CrystalLedRing radius={5} thickness={0.12} color="#ffffff" speed={0.4} invert startingRot={[-Math.PI / 6, Math.PI / 2, 0]} />
-                    </group>
-                </Float>
+                <ambientLight intensity={0.5} />
+                <Environment preset="studio" />
 
-                <SpectacularFloor />
-                <Sparkles count={600} scale={20} size={2} speed={0.3} color="#00f2ff" />
-                <Sparkles count={300} scale={30} size={4} speed={0.1} color="#7000ff" />
+                <group position={[0, 1, 0]}>
+                    {/* Main Living Light Arches - inspired by loov.co.kr */}
+                    <ArchitecturalLight radius={5} thickness={0.08} color="#ffffff" speed={0.8} rotation={[Math.PI / 2, 0.5, 0]} />
+                    <ArchitecturalLight radius={4.5} thickness={0.12} color="#a4c639" speed={1.2} rotation={[Math.PI / 2, -0.3, 0.5]} scale={0.9} />
+                    <ArchitecturalLight radius={6} thickness={0.05} color="#a4c639" speed={0.5} rotation={[Math.PI / 2.2, 0.8, -0.2]} scale={1.2} />
+                </group>
 
-                <CinematicCamera />
+                {/* Sparkling particles for airy feel */}
+                <Sparkles count={100} scale={15} size={2} speed={0.2} color="#a4c639" opacity={0.4} />
+
+                <PolishedFloor />
 
                 <EffectComposer multisampling={8}>
-                    <Bloom luminanceThreshold={0.2} mipmapBlur intensity={1.5} radius={0.7} />
-                    <ToneMapping />
-                    <Vignette offset={0.1} darkness={1.2} />
+                    <Bloom luminanceThreshold={0.4} intensity={1.5} mipmapBlur radius={0.6} />
+                    <Vignette offset={0.1} darkness={0.3} />
                 </EffectComposer>
             </Canvas>
         </div>

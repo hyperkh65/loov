@@ -8,28 +8,25 @@ export default function Navbar() {
     return (
         <nav style={{
             position: 'fixed', top: 0, left: 0, right: 0,
-            borderBottom: '1px solid rgba(255,255,255,0.05)',
-            background: 'rgba(9, 9, 11, 0.6)',
-            backdropFilter: 'blur(12px)',
+            borderBottom: '1px solid rgba(0,0,0,0.03)',
+            background: 'rgba(248, 247, 242, 0.7)',
+            backdropFilter: 'blur(20px)',
             zIndex: 100
         }}>
-            <div className="container flex items-center justify-between" style={{ height: '70px' }}>
+            <div className="container flex items-center justify-between" style={{ height: '80px' }}>
                 <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <div style={{
-                        width: 32, height: 32, background: 'var(--primary)',
-                        borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        width: 36, height: 36, background: 'var(--primary)',
+                        borderRadius: '10px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 4px 10px rgba(164,198,57,0.3)'
                     }}>
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                            <line x1="12" y1="8" x2="12" y2="16"></line>
-                            <line x1="8" y1="12" x2="16" y2="12"></line>
-                        </svg>
+                        <span style={{ color: '#fff', fontSize: '18px', fontWeight: 900 }}>L</span>
                     </div>
-                    <span style={{ fontSize: '20px', fontWeight: 800, fontFamily: 'Outfit' }}>LOOV</span>
+                    <span style={{ fontSize: '22px', fontWeight: 900, fontFamily: 'Outfit', letterSpacing: '-0.02em', color: 'var(--text-main)' }}>LOOV</span>
                 </Link>
-                <div style={{ display: 'flex', gap: '32px', fontSize: '14px', fontWeight: 500 }}>
+                <div style={{ display: 'flex', gap: '40px', fontSize: '15px', fontWeight: 600 }}>
                     <NavLink to="/" current={currentPath}>Home</NavLink>
-                    <NavLink to="/market" current={currentPath}>Market Analysis</NavLink>
+                    <NavLink to="/market" current={currentPath}>Market Intelligence</NavLink>
                     <NavLink to="/board" current={currentPath}>Community</NavLink>
                 </div>
             </div>
@@ -40,12 +37,19 @@ export default function Navbar() {
 function NavLink({ to, children, current }) {
     const isActive = current === to;
     return (
-        <Link to={to} style={{ position: 'relative', color: isActive ? '#fff' : '#a1a1aa', transition: 'color 0.2s' }}>
+        <Link to={to} style={{
+            position: 'relative',
+            color: isActive ? 'var(--text-main)' : 'var(--text-muted)',
+            transition: 'all 0.3s ease'
+        }}>
             {children}
             {isActive && (
                 <motion.div
                     layoutId="underline"
-                    style={{ position: 'absolute', bottom: '-26px', left: 0, right: 0, height: 2, background: 'var(--primary)', borderRadius: '2px' }}
+                    style={{
+                        position: 'absolute', bottom: '-4px', left: 0, right: 0, height: 3,
+                        background: 'var(--primary)', borderRadius: '100px'
+                    }}
                 />
             )}
         </Link>
