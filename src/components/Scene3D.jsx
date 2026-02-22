@@ -1,81 +1,66 @@
-import { useRef, useMemo, useState, useEffect } from 'react'
+import { useRef, useState, useEffect, useMemo } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
-// ─────────────────────────────────────────────
-// 트랙 LED 조명 유닛 (사진과 동일한 형태)
-// ─────────────────────────────────────────────
-function TrackLED({ position, targetOffset = [0, 0, 0], color = '#fff5e0', delay = 0, intensity = 40, castShadow = false }) {
-    const groupRef = useRef()
+// ─── 다운라이트 LED (아래를 향해 고정) ────────────────────────────────
+function Downlight({ position, color = '#fff8e7', delay = 0 }) {
     const spotRef = useRef()
     const lensRef = useRef()
-    const brightRef = useRef(0)
-    const [on, setOn] = useState(false)
+    const pRef = useRef()
+    const bright = useRef(0)
+    const flickOn = useRef(false)
+    const flickEnd = useRef(0)
 
     useEffect(() => {
-        const t = setTimeout(() => setOn(true), delay)
+        const t = setTimeout(() => {
+            flickOn.current = true
+            flickEnd.current = performance.now() + 900 // 0.9초 플리커
+        }, delay)
         return () => clearTimeout(t)
     }, [delay])
 
-    // 조명 방향: 타겟을 향해 회전
-    const dir = useMemo(() => {
-        const v = new THREE.Vector3(...targetOffset)
-        v.normalize()
-        return v
-    }, [targetOffset])
+    useFrame((_, delta) => {
+        const now = performance.now()
+        if (!spotRef.current) return
 
-    useFrame((state, delta) => {
-        if (!spotRef.current || !lensRef.current) return
-
-        // 밝기 애니메이션
-        if (on) {
-            brightRef.current = Math.min(brightRef.current + delta * 3.0, 1)
+        if (flickOn.current) {
+            if (now < flickEnd.current) {
+                // 실제 형광등/LED 시동 플리커
+                bright.current = Math.min(bright.current + delta * 3, 1)
+                const f = Math.random() > 0.3 ? bright.current : bright.current * 0.08
+                spotRef.current.intensity = f * 120
+                if (pRef.current) pRef.current.intensity = f * 30
+                if (lensRef.current) lensRef.current.material.emissiveIntensity = f * 12
+            } else {
+                // 안정화
+                bright.current = 1
+                spotRef.current.intensity = 120
+                if (pRef.current) pRef.current.intensity = 30
+                if (lensRef.current) lensRef.current.material.emissiveIntensity = 12
+            }
         }
-        const b = brightRef.current
-
-        // 플리커 (켜지는 중일 때만)
-        const flicker = b < 0.9
-            ? (Math.random() > 0.35 ? b : b * 0.15)
-            : 1.0
-
-        spotRef.current.intensity = flicker * intensity
-        lensRef.current.material.emissiveIntensity = flicker * 10
     })
 
     return (
-        <group ref={groupRef} position={position}>
-            {/* 트랙 레일 조각 */}
-            <mesh position={[0, 0.05, 0]}>
-                <boxGeometry args={[0.25, 0.06, 0.06]} />
-                <meshStandardMaterial color="#1a1a1a" metalness={0.9} roughness={0.2} />
+        <group position={position}>
+            {/* 하우징 몸체 */}
+            <mesh>
+                <cylinderGeometry args={[0.07, 0.09, 0.4, 16]} />
+                <meshStandardMaterial color="#111" metalness={0.9} roughness={0.15} />
             </mesh>
-
-            {/* 조명 마운트 브래킷 */}
-            <mesh position={[0, -0.05, 0]}>
-                <boxGeometry args={[0.08, 0.1, 0.08]} />
-                <meshStandardMaterial color="#111111" metalness={0.8} roughness={0.3} />
-            </mesh>
-
-            {/* 조명 하우징 본체 (원통) */}
-            <mesh position={[0, -0.32, 0]}>
-                <cylinderGeometry args={[0.07, 0.085, 0.45, 16]} />
-                <meshStandardMaterial color="#0d0d0d" metalness={0.85} roughness={0.15} />
-            </mesh>
-
-            {/* 냉각핀 (디테일) */}
-            {[0, 60, 120, 180, 240, 300].map((deg, i) => (
+            {/* 냉각 핀 */}
+            {[0, 60, 120, 180, 240, 300].map((d, i) => (
                 <mesh key={i} position={[
-                    Math.cos(deg * Math.PI / 180) * 0.09,
-                    -0.25,
-                    Math.sin(deg * Math.PI / 180) * 0.09
+                    Math.cos(d * Math.PI / 180) * 0.095,
+                    0.05,
+                    Math.sin(d * Math.PI / 180) * 0.095
                 ]}>
-                    <boxGeometry args={[0.015, 0.2, 0.015]} />
-                    <meshStandardMaterial color="#0a0a0a" metalness={0.9} roughness={0.1} />
+                    <boxGeometry args={[0.012, 0.22, 0.012]} />
+                    <meshStandardMaterial color="#0a0a0a" metalness={0.9} />
                 </mesh>
             ))}
-
-            {/* 렌즈 (조명 on시 빛남) */}
-            <mesh ref={lensRef} position={[0, -0.56, 0]}>
+            {/* 렌즈 (빛날 때 빛남) */}
+            <mesh ref={lensRef} position={[0, -0.22, 0]} rotation={[Math.PI / 2, 0, 0]}>
                 <circleGeometry args={[0.065, 32]} />
                 <meshStandardMaterial
                     color={color}
@@ -85,52 +70,43 @@ function TrackLED({ position, targetOffset = [0, 0, 0], color = '#fff5e0', delay
                     side={THREE.DoubleSide}
                 />
             </mesh>
-
-            {/* 렌즈 외부 링 */}
-            <mesh position={[0, -0.555, 0]}>
+            {/* 렌즈 링 */}
+            <mesh position={[0, -0.215, 0]} rotation={[Math.PI / 2, 0, 0]}>
                 <ringGeometry args={[0.065, 0.09, 32]} />
                 <meshStandardMaterial color="#050505" metalness={0.95} roughness={0.1} />
             </mesh>
 
-            {/* 실제 스포트라이트 */}
+            {/* ★ 실제 조명: 완전 아래를 향함 */}
             <spotLight
                 ref={spotRef}
-                position={[0, -0.58, 0]}
-                target-position={targetOffset}
+                position={[0, -0.25, 0]}
+                rotation={[-Math.PI / 2, 0, 0]}  // 정확히 아래
                 color={color}
                 intensity={0}
-                angle={0.35}
-                penumbra={0.6}
-                distance={20}
-                decay={1.5}
-                castShadow={castShadow}
-                shadow-mapSize-width={512}
-                shadow-mapSize-height={512}
+                angle={0.4}
+                penumbra={0.7}
+                distance={18}
+                decay={1.6}
             />
-            {/* 보조 포인트라이트 - 주변 확실히 밝힘 */}
+            {/* 보조 포인트 라이트 */}
             <pointLight
+                ref={pRef}
+                position={[0, -0.25, 0]}
                 color={color}
                 intensity={0}
-                distance={12}
+                distance={10}
                 decay={2}
-                ref={(ref) => {
-                    if (ref) {
-                        ref.intensity = brightRef.current * (intensity * 0.3)
-                    }
-                }}
             />
         </group>
     )
 }
 
-// ─────────────────────────────────────────────
-// 회전하는 스포트라이트 (연출용)
-// ─────────────────────────────────────────────
+// ─── 회전 스포트라이트 ─────────────────────────────────────────────────
 function RotatingSpot({ position, color, delay, speed }) {
-    const groupRef = useRef()
+    const pivotRef = useRef()
     const spotRef = useRef()
     const lensRef = useRef()
-    const brightRef = useRef(0)
+    const bright = useRef(0)
     const [on, setOn] = useState(false)
 
     useEffect(() => {
@@ -139,91 +115,96 @@ function RotatingSpot({ position, color, delay, speed }) {
     }, [delay])
 
     useFrame((state, delta) => {
-        if (!groupRef.current || !spotRef.current) return
-        if (on) brightRef.current = Math.min(brightRef.current + delta * 1.2, 1)
-        const b = brightRef.current
+        if (!pivotRef.current || !spotRef.current) return
+        if (on) bright.current = Math.min(bright.current + delta * 1.5, 1)
+        const b = bright.current
         const t = state.clock.getElapsedTime()
 
-        groupRef.current.rotation.y = t * speed
-        groupRef.current.rotation.z = Math.sin(t * speed * 0.8) * 0.45
+        pivotRef.current.rotation.y = t * speed
+        pivotRef.current.rotation.x = Math.sin(t * speed * 0.7) * 0.5 - 0.3
 
-        spotRef.current.intensity = b * 25
-        if (lensRef.current) lensRef.current.material.emissiveIntensity = b * 8
+        spotRef.current.intensity = b * 80
+        if (lensRef.current) lensRef.current.material.emissiveIntensity = b * 10
     })
 
     return (
-        <group ref={groupRef} position={position}>
+        <group position={position}>
+            {/* 마운트 */}
             <mesh>
-                <cylinderGeometry args={[0.06, 0.09, 0.3, 16]} />
-                <meshStandardMaterial color="#111" metalness={0.9} roughness={0.1} />
+                <cylinderGeometry args={[0.05, 0.05, 0.12, 12]} />
+                <meshStandardMaterial color="#111" metalness={0.9} />
             </mesh>
-            <mesh ref={lensRef} position={[0, -0.17, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                <circleGeometry args={[0.055, 32]} />
-                <meshStandardMaterial color={color} emissive={color} emissiveIntensity={0} toneMapped={false} />
-            </mesh>
-            <spotLight
-                ref={spotRef}
-                color={color}
-                intensity={0}
-                angle={0.15}
-                penumbra={0.4}
-                distance={20}
-                decay={1.5}
-                castShadow
-            />
+            <group ref={pivotRef}>
+                {/* 하우징 */}
+                <mesh position={[0, -0.25, 0]}>
+                    <cylinderGeometry args={[0.055, 0.07, 0.28, 16]} />
+                    <meshStandardMaterial color="#0d0d0d" metalness={0.85} roughness={0.15} />
+                </mesh>
+                {/* 렌즈 */}
+                <mesh ref={lensRef} position={[0, -0.4, 0]} rotation={[Math.PI / 2, 0, 0]}>
+                    <circleGeometry args={[0.048, 32]} />
+                    <meshStandardMaterial
+                        color={color} emissive={color}
+                        emissiveIntensity={0} toneMapped={false}
+                    />
+                </mesh>
+                {/* 스팟 */}
+                <spotLight
+                    ref={spotRef}
+                    position={[0, -0.42, 0]}
+                    rotation={[-Math.PI / 2, 0, 0]}
+                    color={color}
+                    intensity={0}
+                    angle={0.12}
+                    penumbra={0.3}
+                    distance={22}
+                    decay={1.4}
+                />
+            </group>
         </group>
     )
 }
 
-// ─────────────────────────────────────────────
-// 사무실 공간
-// ─────────────────────────────────────────────
+// ─── 사무실 공간 ──────────────────────────────────────────────────────
 function Office() {
     return (
         <group>
-            {/* 바닥 - 광택 타일 */}
+            {/* 바닥 */}
             <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -3, 0]} receiveShadow>
-                <planeGeometry args={[40, 30]} />
-                <meshStandardMaterial color="#0c0c18" roughness={0.3} metalness={0.5} />
+                <planeGeometry args={[50, 40]} />
+                <meshStandardMaterial color="#0b0b18" roughness={0.25} metalness={0.55} />
             </mesh>
-
             {/* 천장 */}
-            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 5, 0]} receiveShadow>
-                <planeGeometry args={[40, 30]} />
-                <meshStandardMaterial color="#070710" roughness={0.9} metalness={0} />
+            <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 5.1, 0]}>
+                <planeGeometry args={[50, 40]} />
+                <meshStandardMaterial color="#060610" roughness={0.9} />
             </mesh>
-
             {/* 뒷벽 */}
-            <mesh position={[0, 1, -12]} receiveShadow>
-                <planeGeometry args={[40, 16]} />
-                <meshStandardMaterial color="#06060f" roughness={0.8} metalness={0.05} />
+            <mesh position={[0, 1, -13]} receiveShadow>
+                <planeGeometry args={[50, 18]} />
+                <meshStandardMaterial color="#05050e" roughness={0.8} metalness={0.05} />
+            </mesh>
+            {/* 좌벽 */}
+            <mesh position={[-14, 1, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
+                <planeGeometry args={[26, 18]} />
+                <meshStandardMaterial color="#04040c" roughness={0.85} />
+            </mesh>
+            {/* 우벽 */}
+            <mesh position={[14, 1, 0]} rotation={[0, -Math.PI / 2, 0]} receiveShadow>
+                <planeGeometry args={[26, 18]} />
+                <meshStandardMaterial color="#04040c" roughness={0.85} />
             </mesh>
 
-            {/* 좌측 벽 */}
-            <mesh position={[-13, 1, 0]} rotation={[0, Math.PI / 2, 0]} receiveShadow>
-                <planeGeometry args={[24, 16]} />
-                <meshStandardMaterial color="#060610" roughness={0.85} />
-            </mesh>
-
-            {/* 우측 벽 */}
-            <mesh position={[13, 1, 0]} rotation={[0, -Math.PI / 2, 0]} receiveShadow>
-                <planeGeometry args={[24, 16]} />
-                <meshStandardMaterial color="#060610" roughness={0.85} />
-            </mesh>
-
-            {/* 천장 트랙 레일 (수평선) */}
+            {/* 천장 트랙 레일 */}
             {[-6, -2, 2, 6].map((x, i) => (
-                <mesh key={i} position={[x, 4.93, -4]} castShadow>
-                    <boxGeometry args={[0.08, 0.05, 18]} />
-                    <meshStandardMaterial color="#111118" metalness={0.8} roughness={0.2} />
+                <mesh key={i} position={[x, 5, -4]}>
+                    <boxGeometry args={[0.07, 0.04, 22]} />
+                    <meshStandardMaterial color="#14141e" metalness={0.8} roughness={0.2} />
                 </mesh>
             ))}
 
-            {/* 책상 배치 */}
-            {[
-                [-5, -4], [0, -4], [5, -4],
-                [-5, -7.5], [0, -7.5], [5, -7.5],
-            ].map(([x, z], i) => (
+            {/* 책상 6개 */}
+            {[[-5, -4], [0, -4], [5, -4], [-5, -7.5], [0, -7.5], [5, -7.5]].map(([x, z], i) => (
                 <Desk key={i} position={[x, -3, z]} />
             ))}
         </group>
@@ -233,117 +214,82 @@ function Office() {
 function Desk({ position }) {
     return (
         <group position={position}>
-            {/* 상판 */}
-            <mesh position={[0, 0.55, 0]} castShadow receiveShadow>
-                <boxGeometry args={[2.0, 0.05, 0.9]} />
-                <meshStandardMaterial color="#141428" roughness={0.5} metalness={0.2} />
+            <mesh position={[0, 0.55, 0]} receiveShadow castShadow>
+                <boxGeometry args={[2.2, 0.05, 0.95]} />
+                <meshStandardMaterial color="#131326" roughness={0.45} metalness={0.25} />
             </mesh>
-            {/* 다리 */}
-            {[[-0.9, -0.4], [0.9, -0.4], [-0.9, 0.4], [0.9, 0.4]].map(([lx, lz], i) => (
+            {[[-1, -0.4], [1, -0.4], [-1, 0.4], [1, 0.4]].map(([lx, lz], i) => (
                 <mesh key={i} position={[lx, 0, lz]} castShadow>
                     <boxGeometry args={[0.05, 1.1, 0.05]} />
-                    <meshStandardMaterial color="#0a0a18" metalness={0.6} roughness={0.4} />
+                    <meshStandardMaterial color="#0a0a1a" metalness={0.6} />
                 </mesh>
             ))}
             {/* 모니터 */}
-            <mesh position={[0, 1.15, -0.3]} castShadow>
-                <boxGeometry args={[0.9, 0.58, 0.03]} />
-                <meshStandardMaterial
-                    color="#050510"
-                    emissive="#0a1540"
-                    emissiveIntensity={1.5}
-                />
+            <mesh position={[0, 1.14, -0.32]} castShadow>
+                <boxGeometry args={[1.0, 0.62, 0.03]} />
+                <meshStandardMaterial color="#050510" emissive="#081840" emissiveIntensity={1.8} />
             </mesh>
-            {/* 모니터 스탠드 */}
-            <mesh position={[0, 0.75, -0.3]} castShadow>
+            <mesh position={[0, 0.74, -0.32]}>
                 <boxGeometry args={[0.04, 0.38, 0.04]} />
-                <meshStandardMaterial color="#0a0a18" metalness={0.7} />
+                <meshStandardMaterial color="#0a0a1a" metalness={0.7} />
             </mesh>
         </group>
     )
 }
 
-// ─────────────────────────────────────────────
-// 마우스 반응 카메라
-// ─────────────────────────────────────────────
+// ─── 카메라 ───────────────────────────────────────────────────────────
 function CameraRig() {
     const vec = useMemo(() => new THREE.Vector3(), [])
     useFrame((state) => {
-        vec.set(
-            state.mouse.x * 2.5,
-            0.8 + state.mouse.y * 1.2,
-            9.5
-        )
+        vec.set(state.mouse.x * 2.5, 0.8 + state.mouse.y * 1.2, 9.5)
         state.camera.position.lerp(vec, 0.04)
         state.camera.lookAt(0, -0.5, -3)
     })
     return null
 }
 
-// ─────────────────────────────────────────────
-// 메인 씬
-// ─────────────────────────────────────────────
+// ─── 메인 ─────────────────────────────────────────────────────────────
 export default function Scene3D() {
-    // 트랙 LED 배치 (트랙 레일 위 위치, 아래로 조명 방향)
-    const trackLights = [
-        // 앞줄 레일 (-6 x)
-        { pos: [-6, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 300, intensity: 45 },
-        { pos: [-6, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 700, intensity: 45 },
-        { pos: [-6, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1100, intensity: 40 },
-        // (-2 x)
-        { pos: [-2, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 450, intensity: 45 },
-        { pos: [-2, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 850, intensity: 45 },
-        { pos: [-2, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1250, intensity: 40 },
-        // (2 x)
-        { pos: [2, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 380, intensity: 45 },
-        { pos: [2, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 780, intensity: 45 },
-        { pos: [2, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1180, intensity: 40 },
-        // (6 x)
-        { pos: [6, 4.9, -1], target: [0, -8, 0], color: '#fff0d0', delay: 580, intensity: 45 },
-        { pos: [6, 4.9, -5], target: [0, -8, 0], color: '#ffe8c0', delay: 980, intensity: 45 },
-        { pos: [6, 4.9, -9], target: [0, -8, 0], color: '#fff5e0', delay: 1380, intensity: 40 },
+    // 트랙 LED 12개
+    const leds = [
+        { pos: [-6, 4.88, -1], delay: 250 },
+        { pos: [-6, 4.88, -5], delay: 620 },
+        { pos: [-6, 4.88, -9], delay: 1050 },
+        { pos: [-2, 4.88, -1], delay: 380 },
+        { pos: [-2, 4.88, -5], delay: 750 },
+        { pos: [-2, 4.88, -9], delay: 1180 },
+        { pos: [2, 4.88, -1], delay: 310 },
+        { pos: [2, 4.88, -5], delay: 680 },
+        { pos: [2, 4.88, -9], delay: 1120 },
+        { pos: [6, 4.88, -1], delay: 520 },
+        { pos: [6, 4.88, -5], delay: 890 },
+        { pos: [6, 4.88, -9], delay: 1350 },
     ]
 
     return (
-        <div style={{
-            position: 'absolute', top: 0, left: 0,
-            width: '100%', height: '100%',
-            zIndex: 0,
-        }}>
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}>
             <Canvas
-                shadows={{ type: THREE.PCFSoftShadowMap }}
                 dpr={[1, 1.5]}
                 camera={{ position: [0, 1, 9.5], fov: 50 }}
-                gl={{ antialias: true, toneMapping: THREE.ReinhardToneMapping, toneMappingExposure: 1.2 }}
+                gl={{ antialias: true, toneMapping: THREE.ACESFilmicToneMapping, toneMappingExposure: 1.0 }}
             >
                 <color attach="background" args={['#020208']} />
-                <fog attach="fog" args={['#01010a', 12, 38]} />
+                <fog attach="fog" args={['#01010a', 14, 40]} />
 
-                {/* 환경광 - 공간이 바로 보이도록 */}
-                <ambientLight intensity={0.25} color="#0a0a30" />
+                {/* 최소 앰비언트 */}
+                <ambientLight intensity={0.15} color="#0d0d35" />
 
-                {/* ── 트랙 LED 조명 ── */}
-                {trackLights.map((l, i) => (
-                    <TrackLED
-                        key={i}
-                        position={l.pos}
-                        targetOffset={l.target}
-                        color={l.color}
-                        delay={l.delay}
-                        intensity={l.intensity}
-                        castShadow={i < 3}  // 앞 3개만 그림자 (성능)
-                    />
+                {/* LED 다운라이트들 */}
+                {leds.map((l, i) => (
+                    <Downlight key={i} position={l.pos} delay={l.delay} />
                 ))}
 
-                {/* ── LOOV 브랜드 회전 스포트라이트 ── */}
-                <RotatingSpot position={[-7, 4.85, 2]} color="#00c8ff" delay={1600} speed={0.3} />
-                <RotatingSpot position={[7, 4.85, 2]} color="#0090ff" delay={1900} speed={-0.25} />
-                <RotatingSpot position={[0, 4.85, -2]} color="#40d0ff" delay={2200} speed={0.45} />
+                {/* LOOV 브랜드 회전 스팟 */}
+                <RotatingSpot position={[-7, 4.85, 1.5]} color="#00c8ff" delay={1600} speed={0.32} />
+                <RotatingSpot position={[7, 4.85, 1.5]} color="#0090ff" delay={1950} speed={-0.27} />
+                <RotatingSpot position={[0, 4.85, -2]} color="#ffa040" delay={2300} speed={0.48} />
 
-                {/* ── 사무실 ── */}
                 <Office />
-
-                {/* ── 카메라 리그 ── */}
                 <CameraRig />
             </Canvas>
         </div>
