@@ -1,0 +1,41 @@
+{
+    "manifest_version": 3,
+    "name": "Coupang to Notion Auto-Writer",
+    "version": "1.0",
+    "description": "Scrapes Coupang Partners and product pages to Notion",
+    "permissions": [
+        "activeTab",
+        "storage",
+        "scripting",
+        "tabs"
+    ],
+    "host_permissions": [
+        "https://partners.coupang.com/*",
+        "https://www.coupang.com/*",
+        "https://api.notion.com/*"
+    ],
+    "action": {
+        "default_popup": "popup.html"
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://partners.coupang.com/*"
+            ],
+            "js": [
+                "content.js"
+            ]
+        },
+        {
+            "matches": [
+                "https://www.coupang.com/vp/products/*"
+            ],
+            "js": [
+                "product_content.js"
+            ]
+        }
+    ]
+}

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body {
+      width: 300px;
+      padding: 15px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f9f9f9;
+    }
+    h2 { font-size: 16px; margin-top: 0; color: #333; }
+    .field { margin-bottom: 12px; }
+    label { display: block; font-size: 12px; color: #666; margin-bottom: 4px; }
+    input { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ddd; border-radius: 4px; }
+    button {
+      width: 100%;
+      padding: 10px;
+      background: #007AFF;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    button:hover { background: #0063CC; }
+    button#scrapeBtn { background: #FF5A00; }
+    button#scrapeBtn:hover { background: #E65100; }
+    .status { font-size: 11px; color: #888; margin-top: 10px; text-align: center; }
+  </style>
+</head>
+<body>
+  <h2>쿠팡 ➡ 노션 자동화</h2>
+  
+  <div class="field">
+    <label>Notion API Key</label>
+    <input type="password" id="notionKey" placeholder="secret_...">
+  </div>
+  
+  <div class="field">
+    <label>Database ID</label>
+    <input type="text" id="dbId" placeholder="caa4c344...">
+  </div>
+  
+  <button id="saveBtn">환경설정 저장</button>
+  <hr>
+  <button id="scrapeBtn">현재 페이지 상품 수집 시작</button>
+  
+  <div id="status" class="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
