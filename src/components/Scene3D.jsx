@@ -1,81 +1,83 @@
-import { useRef, useMemo } from 'react'
+import { useRef, useMemo, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { Float, Sparkles, MeshReflectorMaterial, Environment, ContactShadows, useDepthBuffer } from '@react-three/drei'
+import { Float, Sparkles, MeshReflectorMaterial, Environment, useCursor } from '@react-three/drei'
 import * as THREE from 'three'
 import { EffectComposer, Bloom, ToneMapping, Vignette } from '@react-three/postprocessing'
 
-// A spectacular glass and LED ring structure
+// Transparent interactive crystal ring
 function CrystalLedRing({ radius, thickness, color, speed, startingRot = [0, 0, 0], invert = false }) {
     const groupRef = useRef()
+    const [hovered, setHover] = useState(false)
+    useCursor(hovered)
 
     useFrame((state, delta) => {
         const time = state.clock.getElapsedTime()
-        groupRef.current.rotation.x += delta * speed * 0.15
-        groupRef.current.rotation.y += delta * speed * 0.25
+        const mouseX = state.mouse.x * 0.5
+        const mouseY = state.mouse.y * 0.5
+
+        // Core rotation
+        groupRef.current.rotation.x += delta * speed * 0.15 + mouseY * 0.01
+        groupRef.current.rotation.y += delta * speed * 0.25 + mouseX * 0.01
         groupRef.current.rotation.z += delta * speed * 0.1
 
-        // Subtle pulsing of the group scale
-        const scale = 1 + Math.sin(time * 2 + (radius)) * 0.02
-        groupRef.current.scale.set(scale, scale, scale)
+        // Pulsing scale
+        const targetScale = hovered ? 1.1 : 1
+        groupRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1)
     })
 
     return (
-        <group ref={groupRef} rotation={startingRot}>
-            {/* The Outer Glass / Crystal Casing */}
+        <group
+            ref={groupRef}
+            rotation={startingRot}
+            onPointerOver={() => setHover(true)}
+            onPointerOut={() => setHover(false)}
+        >
             <mesh>
                 <torusGeometry args={[radius, thickness, 64, 128]} />
                 <meshPhysicalMaterial
                     color="#ffffff"
-                    transmission={1} // Glass-like transparency
+                    transmission={1}
                     opacity={1}
-                    metalness={0.1}
+                    metalness={0.2}
                     roughness={0.05}
-                    ior={1.5}          // Index of refraction for glass
-                    thickness={0.5}    // Volume thickness for refraction
-                    specularIntensity={2}
+                    ior={1.7}
+                    thickness={0.8}
+                    specularIntensity={3}
                     clearcoat={1}
-                    clearcoatRoughness={0.1}
                 />
             </mesh>
 
-            {/* The Inner Pure LED Light Source */}
-            <mesh position={[0, 0, 0]}>
-                <torusGeometry args={[radius * (invert ? 1.05 : 0.98), thickness * 0.2, 32, 128]} />
+            <mesh>
+                <torusGeometry args={[radius * (invert ? 1.05 : 0.98), thickness * 0.3, 32, 128]} />
                 <meshStandardMaterial
                     color={color}
                     emissive={color}
-                    emissiveIntensity={4.5}
-                    toneMapped={false} // Prevents Bloom from washing out the core color
+                    emissiveIntensity={hovered ? 8 : 4.5}
+                    toneMapped={false}
                 />
             </mesh>
 
-            {/* Glowing Aura sphere for extra volume scattered light */}
-            <mesh scale={[radius * 2.1, radius * 2.1, thickness * 4]}>
-                <sphereGeometry args={[1, 32, 32]} />
-                <meshBasicMaterial color={color} transparent opacity={0.03} depthWrite={false} blending={THREE.AdditiveBlending} />
-            </mesh>
-
-            <pointLight color={color} intensity={5} distance={10} decay={2} />
+            <pointLight color={color} intensity={hovered ? 8 : 4} distance={15} />
         </group>
     )
 }
 
 function SpectacularFloor() {
     return (
-        <mesh position={[0, -3.5, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, -5, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[100, 100]} />
             <MeshReflectorMaterial
                 blur={[400, 100]}
                 resolution={2048}
                 mixBlur={1}
-                mixStrength={100}
+                mixStrength={80}
                 roughness={0.1}
                 depthScale={1.2}
                 minDepthThreshold={0.4}
                 maxDepthThreshold={1.4}
-                color="#020202"
-                metalness={0.8}
-                mirror={0.9} // Extremely reflective
+                color="#050505"
+                metalness={0.9}
+                mirror={1}
             />
         </mesh>
     )
@@ -84,9 +86,8 @@ function SpectacularFloor() {
 function CinematicCamera() {
     const { camera, mouse } = useThree()
     useFrame(() => {
-        // Smooth cinematic parallax
-        camera.position.x = THREE.MathUtils.lerp(camera.position.x, mouse.x * 3, 0.03)
-        camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1 + mouse.y * 2, 0.03)
+        camera.position.x = THREE.MathUtils.lerp(camera.position.x, mouse.x * 4, 0.05)
+        camera.position.y = THREE.MathUtils.lerp(camera.position.y, 1 + mouse.y * 3, 0.05)
         camera.lookAt(0, 0, 0)
     })
     return null
@@ -95,49 +96,30 @@ function CinematicCamera() {
 export default function Scene3D() {
     return (
         <div style={{ width: '100%', height: '100vh', position: 'absolute', top: 0, left: 0, zIndex: 0, background: '#000' }}>
-            <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 1, 14], fov: 40, near: 0.1, far: 100 }}>
+            <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 1, 15], fov: 40 }}>
                 <color attach="background" args={['#000000']} />
-                <fog attach="fog" args={['#000000', 10, 30]} />
+                <fog attach="fog" args={['#000000', 10, 40]} />
+                <ambientLight intensity={0.1} />
+                <Environment preset="night" />
 
-                {/* Minimal ambient light so the glowing elements pop */}
-                <ambientLight intensity={0.05} />
-
-                {/* 
-                  Environment map is crucial for glass/metal reflections. 
-                  Using preset="city" provides sharp neon-like reflections perfect for tech themes.
-                */}
-                <Environment preset="city" />
-
-                <Float speed={2} rotationIntensity={0.8} floatIntensity={1.5}>
-                    <group position={[0, 0.5, 0]}>
-                        {/* Core intense ring */}
-                        <CrystalLedRing radius={1.8} thickness={0.4} color="#00ffff" speed={1.2} />
-                        {/* Diagonal large ring */}
-                        <CrystalLedRing radius={3.2} thickness={0.25} color="#8a2be2" speed={-0.8} startingRot={[Math.PI / 3, Math.PI / 4, 0]} />
-                        {/* Outer accent ring */}
-                        <CrystalLedRing radius={4.5} thickness={0.15} color="#ffffff" speed={0.5} invert startingRot={[-Math.PI / 6, Math.PI / 2, Math.PI / 8]} />
+                <Float speed={1.5} rotationIntensity={0.5} floatIntensity={1}>
+                    <group position={[0, 0, 0]}>
+                        <CrystalLedRing radius={2} thickness={0.4} color="#00f2ff" speed={1} />
+                        <CrystalLedRing radius={3.5} thickness={0.2} color="#7000ff" speed={-0.6} startingRot={[Math.PI / 4, Math.PI / 4, 0]} />
+                        <CrystalLedRing radius={5} thickness={0.12} color="#ffffff" speed={0.4} invert startingRot={[-Math.PI / 6, Math.PI / 2, 0]} />
                     </group>
                 </Float>
 
                 <SpectacularFloor />
-
-                <Sparkles count={400} scale={20} size={2.5} speed={0.2} opacity={0.6} color="#00ffff" />
-                <Sparkles count={200} scale={20} size={4} speed={0.4} opacity={0.3} color="#8a2be2" />
+                <Sparkles count={600} scale={20} size={2} speed={0.3} color="#00f2ff" />
+                <Sparkles count={300} scale={30} size={4} speed={0.1} color="#7000ff" />
 
                 <CinematicCamera />
 
-                {/* High-end post processing */}
-                <EffectComposer disableNormalPass multisampling={8}>
-                    {/* Bloom for the glowing effect on emissive materials */}
-                    <Bloom
-                        luminanceThreshold={0.5}
-                        mipmapBlur
-                        intensity={2.5}
-                        radius={0.8}
-                    />
+                <EffectComposer multisampling={8}>
+                    <Bloom luminanceThreshold={0.2} mipmapBlur intensity={1.5} radius={0.7} />
                     <ToneMapping />
-                    {/* Vignette to draw eyes to the center */}
-                    <Vignette eskil={false} offset={0.1} darkness={1.1} />
+                    <Vignette offset={0.1} darkness={1.2} />
                 </EffectComposer>
             </Canvas>
         </div>
