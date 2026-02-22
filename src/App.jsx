@@ -3,6 +3,7 @@ import Navbar from './components/Navbar';
 import Home from './pages/Home';
 import Board from './pages/Board';
 import MarketAnalysis from './pages/MarketAnalysis';
+import ProductIntel from './pages/ProductIntel';
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
         <Route path="/" element={<Home />} />
         <Route path="/board" element={<Board />} />
         <Route path="/market" element={<MarketAnalysis />} />
+        <Route path="/intel" element={<ProductIntel />} />
       </Routes>
     </BrowserRouter>
   );

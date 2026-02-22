@@ -25,7 +25,8 @@ export default function Navbar() {
                 </Link>
                 <div style={{ display: 'flex', gap: '32px', fontSize: '14px', fontWeight: 600 }}>
                     <NavLink to="/" current={currentPath}>Home</NavLink>
-                    <NavLink to="/market" current={currentPath}>Market Analysis</NavLink>
+                    <NavLink to="/market" current={currentPath}>Market Spy</NavLink>
+                    <NavLink to="/intel" current={currentPath}>Product Intel</NavLink>
                     <NavLink to="/board" current={currentPath}>Community</NavLink>
                 </div>
             </div>
