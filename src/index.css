@@ -1,4 +1,69 @@
-@import url('https://fonts.googleapis.com/css2?family=Satisfy&family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@400;500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Satisfy&family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800;900&display=swap');
+
+/* ── LOOV 텍스트 반짝임 ── */
+@keyframes loov-shimmer {
+  0% {
+    background-position: -300% center;
+  }
+
+  100% {
+    background-position: 300% center;
+  }
+}
+
+@keyframes loov-pulse {
+
+  0%,
+  100% {
+    filter: drop-shadow(0 0 8px #00e5ff88) drop-shadow(0 0 32px #00c8ff44);
+  }
+
+  50% {
+    filter: drop-shadow(0 0 20px #00e5ffcc) drop-shadow(0 0 60px #00e5ff66) drop-shadow(0 0 100px #00c8ff33);
+  }
+}
+
+@keyframes sparkle-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0) rotate(0deg);
+  }
+
+  40% {
+    opacity: 1;
+    transform: scale(1.4) rotate(120deg);
+  }
+
+  70% {
+    opacity: 0.7;
+    transform: scale(1) rotate(200deg);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(0) rotate(360deg);
+  }
+}
+
+@keyframes float-particle {
+  0% {
+    transform: translateY(0px) translateX(0px);
+    opacity: 0;
+  }
+
+  20% {
+    opacity: 1;
+  }
+
+  80% {
+    opacity: 0.8;
+  }
+
+  100% {
+    transform: translateY(-60px) translateX(20px);
+    opacity: 0;
+  }
+}
 
 :root {
   --bg: #09090b;
