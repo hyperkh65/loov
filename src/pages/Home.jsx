@@ -13,14 +13,16 @@ export default function Home() {
                 position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
                 display: 'flex', flexDirection: 'column',
                 justifyContent: 'center', alignItems: 'center', pointerEvents: 'none',
-                background: 'radial-gradient(circle at center, transparent 0%, rgba(5,5,5,0.8) 100%)'
+                background: 'radial-gradient(circle at center, transparent 30%, rgba(2,2,2,0.95) 100%)',
+                zIndex: 10
             }}>
                 <motion.div
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 1, delay: 0.5 }}
-                    style={{ textAlign: 'center', padding: '0 24px', pointerEvents: 'auto' }}
+                    style={{ textAlign: 'center', padding: '0 24px', pointerEvents: 'auto', textShadow: '0 10px 30px rgba(0,0,0,0.8)' }}
                 >
+
                     <div style={{ marginBottom: 16 }}>
                         <span className="pill" style={{
                             background: 'rgba(255,255,255,0.1)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)'
