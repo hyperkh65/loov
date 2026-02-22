@@ -1,47 +1,64 @@
-import { useRef, useState, useMemo } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { useRef, useState } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Float, MeshReflectorMaterial, Environment, Sparkles } from '@react-three/drei'
 import * as THREE from 'three'
-import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing'
+import { EffectComposer, Bloom, Vignette, ChromaticAberration } from '@react-three/postprocessing'
 
-// A soft, architectural glowing curve (resembles LOOV's coved lighting)
-function ArchitecturalLight({ radius, thickness, color, speed, rotation = [0, 0, 0], scale = 1 }) {
+// Highly interactive architectural light line
+function InteractiveLightLine({ radius, thickness, color, speed, rotationOffset = [0, 0, 0], scale = 1 }) {
     const meshRef = useRef()
+    const [hovered, setHover] = useState(false)
 
     useFrame((state) => {
         const time = state.clock.getElapsedTime()
-        // Subtly pulse the light to make it feel "alive"
-        const pulse = 1 + Math.sin(time * speed) * 0.2
-        meshRef.current.material.emissiveIntensity = 4 * pulse
+        const mouseX = state.mouse.x
+        const mouseY = state.mouse.y
 
-        // Gentle rotation for dynamic feel
-        meshRef.current.rotation.z += 0.001 * speed
-        meshRef.current.rotation.x = Math.sin(time * 0.5) * 0.1
+        // React to mouse: Rotation follow
+        meshRef.current.rotation.x = rotationOffset[0] + mouseY * 0.2 + Math.sin(time * speed * 0.5) * 0.1
+        meshRef.current.rotation.y = rotationOffset[1] + mouseX * 0.2 + Math.cos(time * speed * 0.5) * 0.1
+        meshRef.current.rotation.z += 0.005 * speed
+
+        // Breathing light effect + Interaction glow
+        const pulse = 1 + Math.sin(time * 2) * 0.3
+        const hoverBoost = hovered ? 2 : 1
+        meshRef.current.material.emissiveIntensity = 5 * pulse * hoverBoost
+
+        // Dynamic scaling on interaction
+        const targetScale = scale * (hovered ? 1.1 : 1)
+        meshRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1)
     })
 
     return (
-        <group rotation={rotation} scale={scale}>
-            <mesh ref={meshRef}>
-                <torusGeometry args={[radius, thickness, 32, 100, Math.PI * 0.8]} />
-                <meshStandardMaterial
-                    color="#ffffff"
-                    emissive={color}
-                    emissiveIntensity={4}
-                    toneMapped={false}
-                    transparent
-                    opacity={0.9}
-                />
-            </mesh>
-            {/* Soft glow aura */}
-            <mesh scale={1.1}>
-                <torusGeometry args={[radius, thickness * 2, 16, 50, Math.PI * 0.8]} />
-                <meshBasicMaterial color={color} transparent opacity={0.05} blending={THREE.AdditiveBlending} />
-            </mesh>
-        </group>
+        <mesh
+            ref={meshRef}
+            onPointerOver={() => setHover(true)}
+            onPointerOut={() => setHover(false)}
+        >
+            <torusGeometry args={[radius, thickness, 32, 100, Math.PI * 0.7]} />
+            <meshStandardMaterial
+                color="#ffffff"
+                emissive={color}
+                emissiveIntensity={5}
+                toneMapped={false}
+                transparent
+                opacity={0.8}
+            />
+        </mesh>
     )
 }
 
-function PolishedFloor() {
+function Rig() {
+    const { camera, mouse } = useThree()
+    const vec = new THREE.Vector3()
+    return useFrame(() => {
+        // Smooth camera movement based on mouse
+        camera.position.lerp(vec.set(mouse.x * 2, 2 + mouse.y * 1, 12), 0.05)
+        camera.lookAt(0, 0, 0)
+    })
+}
+
+function Ground() {
     return (
         <mesh position={[0, -4, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[100, 100]} />
@@ -49,12 +66,12 @@ function PolishedFloor() {
                 blur={[300, 100]}
                 resolution={1024}
                 mixBlur={1}
-                mixStrength={40}
-                roughness={0.1}
+                mixStrength={60}
+                roughness={1}
                 depthScale={1.2}
                 minDepthThreshold={0.4}
                 maxDepthThreshold={1.4}
-                color="#f8f7f2" // Matches warm beige background
+                color="#050505"
                 metalness={0.5}
             />
         </mesh>
@@ -65,27 +82,29 @@ export default function Scene3D() {
     return (
         <div style={{ width: '100%', height: '100vh', position: 'absolute', top: 0, left: 0, zIndex: 0 }}>
             <Canvas shadows dpr={[1, 2]} camera={{ position: [0, 2, 12], fov: 45 }}>
-                <color attach="background" args={['#edecea']} /> {/* Slightly darker warm beige for depth */}
-                <fog attach="fog" args={['#edecea', 10, 40]} />
+                <color attach="background" args={['#000000']} />
+                <fog attach="fog" args={['#000', 10, 35]} />
 
-                <ambientLight intensity={0.5} />
-                <Environment preset="studio" />
+                <ambientLight intensity={0.2} />
+                <Environment preset="night" />
 
                 <group position={[0, 1, 0]}>
-                    {/* Main Living Light Arches - inspired by loov.co.kr */}
-                    <ArchitecturalLight radius={5} thickness={0.08} color="#ffffff" speed={0.8} rotation={[Math.PI / 2, 0.5, 0]} />
-                    <ArchitecturalLight radius={4.5} thickness={0.12} color="#a4c639" speed={1.2} rotation={[Math.PI / 2, -0.3, 0.5]} scale={0.9} />
-                    <ArchitecturalLight radius={6} thickness={0.05} color="#a4c639" speed={0.5} rotation={[Math.PI / 2.2, 0.8, -0.2]} scale={1.2} />
+                    {/* Living Architectural Lights (inspired by loov.co.kr curves) but in Dark/Cyan/Lime */}
+                    <InteractiveLightLine radius={5} thickness={0.05} color="#00f2ff" speed={0.5} rotationOffset={[Math.PI / 2, 0, 0]} scale={1} />
+                    <InteractiveLightLine radius={4.5} thickness={0.08} color="#a4c639" speed={0.8} rotationOffset={[Math.PI / 2.2, 0.5, 0.2]} scale={0.9} />
+                    <InteractiveLightLine radius={6} thickness={0.03} color="#ffffff" speed={0.3} rotationOffset={[Math.PI / 1.8, -0.4, -0.3]} scale={1.2} />
                 </group>
 
-                {/* Sparkling particles for airy feel */}
-                <Sparkles count={100} scale={15} size={2} speed={0.2} color="#a4c639" opacity={0.4} />
+                {/* Floating cyber particles */}
+                <Sparkles count={80} scale={15} size={2} speed={0.3} color="#00f2ff" opacity={0.5} />
 
-                <PolishedFloor />
+                <Ground />
+                <Rig />
 
                 <EffectComposer multisampling={8}>
-                    <Bloom luminanceThreshold={0.4} intensity={1.5} mipmapBlur radius={0.6} />
-                    <Vignette offset={0.1} darkness={0.3} />
+                    <Bloom luminanceThreshold={0.5} intensity={2} mipmapBlur radius={0.8} />
+                    <ChromaticAberration offset={[0.002, 0.002]} />
+                    <Vignette offset={0.3} darkness={0.8} />
                 </EffectComposer>
             </Canvas>
         </div>

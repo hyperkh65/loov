@@ -1,7 +1,7 @@
 import Scene3D from '../components/Scene3D'
 import { motion, useScroll, useTransform } from 'framer-motion'
 import { Link } from 'react-router-dom'
-import { ArrowRight, Lightbulb, TrendingUp, Cpu } from 'lucide-react'
+import { ArrowRight, Zap, Target, ShieldCheck } from 'lucide-react'
 
 export default function Home() {
     const { scrollY } = useScroll()
@@ -9,8 +9,8 @@ export default function Home() {
     const scale = useTransform(scrollY, [0, 400], [1, 0.9])
 
     return (
-        <div style={{ position: 'relative', width: '100%', minHeight: '150vh', background: 'var(--bg)' }}>
-            {/* 3D Background - Living Lights */}
+        <div style={{ position: 'relative', width: '100%', minHeight: '150vh', background: '#000' }}>
+            {/* 3D Background - Fixed position */}
             <div style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100vh', zIndex: 0 }}>
                 <Scene3D />
             </div>
@@ -32,32 +32,32 @@ export default function Home() {
                         transition={{ delay: 0.5 }}
                         style={{ marginBottom: 24 }}
                     >
-                        <span className="script-font" style={{ fontSize: '32px', color: '#a4c639' }}>Born to be bright</span>
+                        <span className="script-font" style={{ fontSize: '28px', color: '#00f2ff', opacity: 0.8 }}>Born to be bright</span>
                     </motion.div>
 
-                    <h1 style={{
-                        fontSize: 'clamp(48px, 8vw, 120px)', fontWeight: 800, fontFamily: 'Outfit',
-                        letterSpacing: '-0.06em', lineHeight: 0.85, marginBottom: 32, color: 'var(--text-main)'
+                    <h1 className="shimmer" style={{
+                        fontSize: 'clamp(48px, 8vw, 110px)', fontWeight: 900, fontFamily: 'Outfit',
+                        letterSpacing: '-0.04em', lineHeight: 0.9, marginBottom: 32
                     }}>
                         LOOV<br />
-                        <span style={{ color: '#a4c639' }}>SYSTEMS.</span>
+                        <span style={{ color: '#fff', opacity: 0.9 }}>BEYOND LIMITS.</span>
                     </h1>
 
                     <p style={{
-                        color: 'var(--text-muted)', fontSize: '20px', maxWidth: '700px',
-                        margin: '0 auto 48px', lineHeight: 1.6, fontWeight: 500
+                        color: 'rgba(255,255,255,0.6)', fontSize: '20px', maxWidth: '700px',
+                        margin: '0 auto 48px', lineHeight: 1.6, fontWeight: 400
                     }}>
-                        공간의 가치를 완성하는 지능형 LED 시스템.<br />
-                        LOOV는 단순한 조명을 넘어 공간의 생명력을 불어넣는 기술을 연구합니다.
+                        국내 최고 수준의 LED 조달 시장 분석 및 지능형 플랫폼.<br />
+                        LOOV Intelligence: 데이터가 만드는 새로운 빛의 세계를 경험하세요.
                     </p>
 
                     <div style={{ display: 'flex', gap: 20, justifyContent: 'center' }}>
-                        <Link to="/market" className="btn-primary flex items-center gap-2">
-                            Dashboard Launcher <ArrowRight size={18} />
+                        <Link to="/market" className="btn-primary flex items-center gap-2" style={{ padding: '16px 36px', fontSize: '16px' }}>
+                            Go Dashboard <ArrowRight size={18} />
                         </Link>
-                        <button className="btn-ghost" onClick={() => window.scrollTo({ top: window.innerHeight, behavior: 'smooth' })}>
-                            Explore Living Lights
-                        </button>
+                        <Link to="/board" className="btn-ghost" style={{ padding: '16px 36px', fontSize: '16px' }}>
+                            Explore Insights
+                        </Link>
                     </div>
                 </motion.div>
 
@@ -65,10 +65,10 @@ export default function Home() {
                 <motion.div
                     animate={{ y: [0, 10, 0] }}
                     transition={{ repeat: Infinity, duration: 2 }}
-                    style={{ position: 'absolute', bottom: 40, opacity: 0.3, left: 'calc(50% - 12px)' }}
+                    style={{ position: 'absolute', bottom: 40, opacity: 0.5, left: 'calc(50% - 12px)' }}
                 >
-                    <div style={{ width: '24px', height: '40px', border: '2px solid var(--text-main)', borderRadius: '12px', display: 'flex', justifyContent: 'center' }}>
-                        <div style={{ width: '4px', height: '8px', background: 'var(--text-main)', borderRadius: '2px', marginTop: '8px' }} />
+                    <div style={{ width: '24px', height: '40px', border: '2px solid #fff', borderRadius: '12px', display: 'flex', justifyContent: 'center' }}>
+                        <div style={{ width: '4px', height: '8px', background: '#fff', borderRadius: '2px', marginTop: '8px' }} />
                     </div>
                 </motion.div>
             </section>
@@ -77,21 +77,21 @@ export default function Home() {
             <section className="container" style={{ position: 'relative', zIndex: 1, padding: '100px 0' }}>
                 <div className="grid grid-cols-3">
                     <FeatureCard
-                        icon={<Lightbulb color="#a4c639" />}
-                        title="Smart Optics"
-                        desc="인간 중심 조명을 위한 미세 광학 설계 및 사용자 맞춤형 제어 시스템."
+                        icon={<Zap color="#00f2ff" />}
+                        title="High Performance"
+                        desc="초저전력, 고효율 광학 시스템 설계 및 데이터 기반 최적화 솔루션."
                         index={0}
                     />
                     <FeatureCard
-                        icon={<TrendingUp color="#a4c639" />}
-                        title="Market Intelligence"
-                        desc="조달 시장 빅데이터 분석을 통한 최적의 비즈니스 인사이트 제공."
+                        icon={<Target color="#a4c639" />}
+                        title="Market Insight"
+                        desc="전국 조달 시장 실시간 수집 및 AI 기술 기반 낙찰 전략 데이터."
                         index={1}
                     />
                     <FeatureCard
-                        icon={<Cpu color="#a4c639" />}
-                        title="AI Automation"
-                        desc="설계부터 출하까지, AI 기반의 스마트 생산 및 관리 프로세스."
+                        icon={<ShieldCheck color="#ffffff" />}
+                        title="Secure Infrastructure"
+                        desc="Supabase - Notion 멀티 클라우드 동기화를 통한 데이터 보안 확보."
                         index={2}
                     />
                 </div>
@@ -111,13 +111,13 @@ function FeatureCard({ icon, title, desc, index }) {
             style={{ padding: '48px' }}
         >
             <div style={{
-                width: 60, height: 60, borderRadius: '16px', background: '#eef7d4',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 28
+                width: 54, height: 54, borderRadius: '14px', background: 'rgba(255,255,255,0.05)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24
             }}>
                 {icon}
             </div>
-            <h3 style={{ fontSize: 26, fontWeight: 800, marginBottom: 16, fontFamily: 'Outfit' }}>{title}</h3>
-            <p style={{ color: 'var(--text-muted)', lineHeight: 1.7, fontSize: '16px' }}>{desc}</p>
+            <h3 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>{title}</h3>
+            <p style={{ color: 'var(--text-muted)', lineHeight: 1.6 }}>{desc}</p>
         </motion.div>
     )
 }
