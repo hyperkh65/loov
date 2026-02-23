@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 
-const DANAWA_BASE = 'https://search.danawa.com/dsearch.php'
+const DANAWA_BASE = '/api/danawa/dsearch.php'
 
 /**
  * 다나와에서 LED 제품 전체 페이지를 수집하는 스크래퍼
@@ -71,33 +71,36 @@ function parseTotalCount(html) {
 // ─── Supabase에 저장 ─────────────────────────────────────────────────
 export async function saveProducts(products) {
     if (!products.length) return { count: 0 }
-
-    // upsert (external_id 기준)
-    const { data, error } = await supabase
-        .from('led_products')
-        .upsert(products, { onConflict: 'external_id' })
-
-    if (error) console.error('Save error:', error)
-    return { count: products.length, error }
+    try {
+        const { data, error } = await supabase
+            .from('led_products')
+            .upsert(products, { onConflict: 'external_id' })
+        if (error) console.warn('Save error (table may not exist):', error.message)
+        return { count: products.length, error }
+    } catch (e) {
+        console.warn('Supabase save skipped:', e.message)
+        return { count: products.length }
+    }
 }
 
 // ─── 가격 이력 저장 ──────────────────────────────────────────────────
 export async function savePriceHistory(products) {
-    const entries = products
-        .filter(p => p.external_id && p.price)
-        .map(p => ({
-            product_id: p.external_id,
-            price: p.price,
-            recorded_at: new Date().toISOString(),
-        }))
-
-    if (!entries.length) return
-
-    const { error } = await supabase
-        .from('led_price_history')
-        .insert(entries)
-
-    if (error) console.error('Price history error:', error)
+    try {
+        const entries = products
+            .filter(p => p.external_id && p.price)
+            .map(p => ({
+                product_id: p.external_id,
+                price: p.price,
+                recorded_at: new Date().toISOString(),
+            }))
+        if (!entries.length) return
+        const { error } = await supabase
+            .from('led_price_history')
+            .insert(entries)
+        if (error) console.warn('Price history skipped:', error.message)
+    } catch (e) {
+        console.warn('Price history save skipped:', e.message)
+    }
 }
 
 // ─── Gemini AI 리포트 생성 ────────────────────────────────────────────
@@ -150,12 +153,15 @@ export async function generateReport(products) {
         generated_at: new Date().toISOString(),
     }
 
-    // Supabase 저장
-    const { error } = await supabase
-        .from('led_reports')
-        .upsert(report, { onConflict: 'date' })
-
-    if (error) console.error('Report save error:', error)
+    // Supabase 저장 (테이블 없으면 skip)
+    try {
+        const { error } = await supabase
+            .from('led_reports')
+            .upsert(report, { onConflict: 'date' })
+        if (error) console.warn('Report save skipped:', error.message)
+    } catch (e) {
+        console.warn('Report save skipped:', e.message)
+    }
 
     return report
 }

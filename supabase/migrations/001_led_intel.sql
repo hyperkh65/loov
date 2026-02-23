@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS led_reports (
     overall_max_price INTEGER,
     category_stats JSONB,
     top_makers JSONB,
+    ai_commentary TEXT,
+    waste_items JSONB,
     generated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -48,14 +50,59 @@ ALTER TABLE led_products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE led_price_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE led_reports ENABLE ROW LEVEL SECURITY;
 
--- 모두 읽기 가능
+-- 기존 정책 삭제 후 생성 (Idempotent)
+DROP POLICY IF EXISTS "Public read led_products" ON led_products;
 CREATE POLICY "Public read led_products" ON led_products FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public read led_price_history" ON led_price_history;
 CREATE POLICY "Public read led_price_history" ON led_price_history FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public read led_reports" ON led_reports;
 CREATE POLICY "Public read led_reports" ON led_reports FOR SELECT USING (true);
 
--- 모두 쓰기 가능 (서비스 키 or anon 허용)
+DROP POLICY IF EXISTS "Public insert led_products" ON led_products;
 CREATE POLICY "Public insert led_products" ON led_products FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public update led_products" ON led_products;
 CREATE POLICY "Public update led_products" ON led_products FOR UPDATE USING (true);
+
+DROP POLICY IF EXISTS "Public insert led_price_history" ON led_price_history;
 CREATE POLICY "Public insert led_price_history" ON led_price_history FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public insert led_reports" ON led_reports;
 CREATE POLICY "Public insert led_reports" ON led_reports FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public update led_reports" ON led_reports;
 CREATE POLICY "Public update led_reports" ON led_reports FOR UPDATE USING (true);
+
+-- 작업 상태 테이블 (관리용)
+CREATE TABLE IF NOT EXISTS led_collection_jobs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    status TEXT NOT NULL DEFAULT 'IDLE',
+    progress TEXT,
+    started_at TIMESTAMPTZ,
+    finished_at TIMESTAMPTZ,
+    result_summary JSONB
+);
+
+-- 기존 정책 삭제 후 생성
+DROP POLICY IF EXISTS "Public access led_collection_jobs" ON led_collection_jobs;
+ALTER TABLE led_collection_jobs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Public access led_collection_jobs" ON led_collection_jobs FOR ALL USING (true);
+
+-- 초기 데이터
+INSERT INTO led_collection_jobs (id, status) 
+VALUES ('00000000-0000-0000-0000-000000000001', 'IDLE')
+ON CONFLICT (id) DO NOTHING;
+
+-- 새 컬럼 추가 (테이블이 이미 있는 경우를 대비)
+DO $$ 
+BEGIN 
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='led_reports' AND column_name='ai_commentary') THEN
+        ALTER TABLE led_reports ADD COLUMN ai_commentary TEXT;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='led_reports' AND column_name='waste_items') THEN
+        ALTER TABLE led_reports ADD COLUMN waste_items JSONB;
+    END IF;
+END $$;
+

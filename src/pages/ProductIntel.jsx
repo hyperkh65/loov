@@ -14,63 +14,78 @@ export default function ProductIntel() {
     const [filter, setFilter] = useState('all')
     const [sort, setSort] = useState('price_asc')
 
-    // ── 리포트 + 제품 로드 ──
+    // ── 리포트 + 제품 + 작업 상태 로드 ──
     useEffect(() => {
         loadData()
+
+        // 실시간 작업 상태 구독
+        const channel = supabase
+            .channel('job-status')
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'led_collection_jobs'
+            }, (payload) => {
+                const job = payload.new
+                if (job.status === 'RUNNING') {
+                    setCollecting(true)
+                    setProgress(job.progress || '◈ BACKGROUND SYNC IN PROGRESS...')
+                } else if (job.status === 'COMPLETED') {
+                    setCollecting(false)
+                    setProgress(`◈ TASK COMPLETE: ${job.result_summary?.totalCollected || 0} ITEMS SYNCED TO NOTION & SUPABASE`)
+                    loadData()
+                } else if (job.status === 'FAILED') {
+                    setCollecting(false)
+                    setProgress(`◈ SYSTEM ERROR: ${job.progress}`)
+                }
+            })
+            .subscribe()
+
+        return () => supabase.removeChannel(channel)
     }, [])
 
     async function loadData() {
         setLoading(true)
-
-        // 최신 리포트 로드
-        const { data: reports } = await supabase
-            .from('led_reports')
-            .select('*')
-            .order('generated_at', { ascending: false })
-            .limit(1)
-
+        // 최신 리포트
+        const { data: reports } = await supabase.from('led_reports').select('*').order('generated_at', { ascending: false }).limit(1)
         if (reports?.length) setReport(reports[0])
 
-        // 제품 목록 로드
-        const { data: prods } = await supabase
-            .from('led_products')
-            .select('*')
-            .order('price', { ascending: true })
-            .limit(500)
-
+        // 제품 목록
+        const { data: prods } = await supabase.from('led_products').select('*').order('price', { ascending: true }).limit(500)
         if (prods) setProducts(prods)
+
+        // 초기 작업 상태 확인
+        const { data: jobs } = await supabase.from('led_collection_jobs').select('*').eq('id', '00000000-0000-0000-0000-000000000001').single()
+        if (jobs?.status === 'RUNNING') {
+            setCollecting(true)
+            setProgress(jobs.progress || '◈ PREVIOUS TASK RESUMING...')
+        }
 
         setLoading(false)
     }
 
-    // ── 수동 수집 트리거 ──
+    // ── 수집 신호 전송 (백엔드로 토스) ──
     async function handleCollect() {
+        if (collecting) return
+
         setCollecting(true)
-        setProgress('◈ Initializing collection engine...')
+        setProgress('◈ TRIGGERING REMOTE COLLECTION ENGINE...')
 
+        // 작업 상태를 RUNNING으로 변경
+        await supabase.from('led_collection_jobs').update({
+            status: 'RUNNING',
+            progress: '◈ INITIALIZING BACKEND WORKER...',
+            started_at: new Date().toISOString()
+        }).eq('id', '00000000-0000-0000-0000-000000000001')
+
+        // Edge Function 호출
         try {
-            // CORS 프록시 사용 (프로덕션에서는 Edge Function 사용)
-            const fetchFn = async (url) => {
-                setProgress(`◈ Fetching page... ${url.match(/page=(\d+)/)?.[1] || 1}`)
-                const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`
-                const res = await fetch(proxyUrl)
-                return await res.text()
-            }
-
-            const result = await runDailyCollection(fetchFn)
-
-            if (result.success) {
-                setProgress(`◈ Collection complete! ${result.totalCollected} products collected.`)
-                setReport(result.report)
-                await loadData()
-            } else {
-                setProgress(`◈ Error: ${result.error}`)
-            }
+            const { data, error } = await supabase.functions.invoke('led-scraper')
+            if (error) throw error
         } catch (err) {
-            setProgress(`◈ Failed: ${err.message}`)
+            console.error('Trigger error:', err)
+            // 에러가 나더라도 Realtime 구독을 통해 상태가 업데이트될 수 있으므로 별도 처리는 생략 가능
         }
-
-        setTimeout(() => setCollecting(false), 3000)
     }
 
     // ── 필터/정렬 ──
@@ -92,54 +107,89 @@ export default function ProductIntel() {
                 <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    style={{ marginBottom: 36 }}
+                    style={{ marginBottom: 40 }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
                         <div>
                             <h1 style={{
-                                fontFamily: 'Outfit', fontWeight: 900, fontSize: 32,
-                                color: '#fff', letterSpacing: '-0.02em', marginBottom: 6,
+                                fontFamily: 'Outfit', fontWeight: 900, fontSize: 36,
+                                color: '#fff', letterSpacing: '-0.02em', marginBottom: 4,
                             }}>
-                                <span style={{ color: C }}>◈</span> Product Intelligence
+                                <span style={{ color: C }}>◈</span> PRODUCT <span style={{ color: C }}>INTEL</span>
                             </h1>
-                            <p style={{ fontFamily: 'monospace', fontSize: 11, color: `${C}60` }}>
-                                LED Market · Daily Automated Collection & AI Analysis
+                            <p style={{ fontFamily: 'monospace', fontSize: 11, color: `${C}60`, letterSpacing: '0.05em' }}>
+                                LED MARKET SEARCH ENGINE // AI POWERED ANALYSIS
                             </p>
                         </div>
-                        <button
+                        <motion.button
+                            whileHover={{ scale: 1.02, boxShadow: `0 0 20px ${C}30` }}
+                            whileTap={{ scale: 0.98 }}
                             onClick={handleCollect}
                             disabled={collecting}
                             style={{
-                                padding: '10px 22px', borderRadius: 4,
-                                background: collecting ? `${C}22` : `linear-gradient(135deg, ${C}, #0090cc)`,
-                                color: collecting ? `${C}88` : '#00020e',
-                                border: 'none', cursor: collecting ? 'wait' : 'pointer',
-                                fontFamily: 'monospace', fontWeight: 700, fontSize: 11,
+                                padding: '12px 24px', borderRadius: 4,
+                                background: collecting ? 'transparent' : C,
+                                color: collecting ? C : '#000',
+                                border: `1px solid ${C}`, cursor: collecting ? 'wait' : 'pointer',
+                                fontFamily: 'monospace', fontWeight: 800, fontSize: 12,
                                 letterSpacing: '0.1em',
-                                clipPath: 'polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%)',
+                                transition: 'all 0.3s'
                             }}
                         >
-                            {collecting ? '▷ COLLECTING...' : '▷ RUN COLLECTION'}
-                        </button>
+                            {collecting ? '◈ SYNCING...' : '◈ RUN COLLECTION'}
+                        </motion.button>
                     </div>
 
-                    {/* 수집 진행 상태 */}
-                    <AnimatePresence>
+                    <AnimatePresence mode="wait">
                         {progress && (
                             <motion.div
+                                key="progress"
                                 initial={{ opacity: 0, height: 0 }}
                                 animate={{ opacity: 1, height: 'auto' }}
                                 exit={{ opacity: 0, height: 0 }}
                                 style={{
-                                    marginTop: 12, padding: '8px 14px',
+                                    padding: '12px 16px',
                                     background: `${C}08`, border: `1px solid ${C}18`,
                                     borderRadius: 4, fontFamily: 'monospace', fontSize: 10, color: `${C}90`,
+                                    marginBottom: 20
                                 }}
                             >
-                                {progress}
+                                <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ repeat: Infinity, duration: 2 }}>
+                                    {progress}
+                                </motion.span>
                             </motion.div>
                         )}
                     </AnimatePresence>
+
+                    {/* AI Insight Box */}
+                    {report?.ai_commentary && (
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            style={{
+                                padding: '24px',
+                                background: `linear-gradient(135deg, ${C}15 0%, rgba(0,0,0,0) 100%)`,
+                                borderLeft: `4px solid ${C}`,
+                                borderRight: `1px solid ${C}10`,
+                                borderTop: `1px solid ${C}10`,
+                                borderBottom: `1px solid ${C}10`,
+                                borderRadius: '0 8px 8px 0',
+                                marginBottom: 32,
+                                position: 'relative',
+                                overflow: 'hidden'
+                            }}
+                        >
+                            <div style={{ position: 'absolute', top: -10, right: -10, fontSize: 90, color: `${C}05`, fontFamily: 'serif', zIndex: 0 }}>
+                                "
+                            </div>
+                            <h4 style={{ fontFamily: 'monospace', fontSize: 10, color: C, marginBottom: 12, letterSpacing: '0.3em', fontWeight: 800 }}>
+                                ◈ AI SMART COACH INSIGHT
+                            </h4>
+                            <p style={{ fontFamily: 'Outfit', fontSize: 16, color: '#e0e0e0', lineHeight: 1.6, margin: 0, position: 'relative', zIndex: 1, fontStyle: 'italic', fontWeight: 400 }}>
+                                {report.ai_commentary}
+                            </p>
+                        </motion.div>
+                    )}
                 </motion.div>
 
                 {/* ──  KPI 카드 ── */}
@@ -177,6 +227,53 @@ export default function ProductIntel() {
                                 </div>
                             </div>
                         ))}
+                    </motion.div>
+                )}
+
+                {/* ── WASTE MONITOR (고평가 품목) ── */}
+                {report?.waste_items?.length > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: 0.25 }}
+                        style={{
+                            marginBottom: 32, padding: '24px',
+                            background: `rgba(255, 50, 50, 0.04)`,
+                            border: `1px solid rgba(255, 50, 50, 0.15)`,
+                            borderRadius: 6,
+                        }}
+                    >
+                        <h3 style={{
+                            fontFamily: 'monospace', fontSize: 11, color: '#ff6b6b',
+                            letterSpacing: '0.15em', marginBottom: 16,
+                            display: 'flex', alignItems: 'center', gap: 8
+                        }}>
+                            <span style={{ fontSize: 14 }}>⚠️</span> WASTE MONITOR: OVERPRICED ITEMS
+                        </h3>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+                            {report.waste_items.map((item, i) => (
+                                <div key={i} style={{
+                                    padding: '14px', background: 'rgba(255, 255, 255, 0.02)',
+                                    border: '1px solid rgba(255, 255, 255, 0.05)', borderRadius: 4,
+                                    position: 'relative'
+                                }}>
+                                    <div style={{ position: 'absolute', top: 10, right: 10, fontFamily: 'monospace', fontSize: 10, color: '#ff6b6b', fontWeight: 800 }}>
+                                        +{item.diff_percent}%
+                                    </div>
+                                    <div style={{ fontFamily: 'Outfit', fontWeight: 600, fontSize: 12, color: '#fff', marginBottom: 8, paddingRight: 40, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {item.name}
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ fontFamily: 'Outfit', fontSize: 14, fontWeight: 700, color: '#ff6b6b' }}>
+                                            ₩{item.price?.toLocaleString()}
+                                        </div>
+                                        <div style={{ fontFamily: 'monospace', fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>
+                                            Avg: ₩{item.avg_price?.toLocaleString()}
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </motion.div>
                 )}
 
