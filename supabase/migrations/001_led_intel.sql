@@ -104,5 +104,11 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='led_reports' AND column_name='waste_items') THEN
         ALTER TABLE led_reports ADD COLUMN waste_items JSONB;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='led_products' AND column_name='specs') THEN
+        ALTER TABLE led_products ADD COLUMN specs JSONB;
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='led_products' AND column_name='seller_count') THEN
+        ALTER TABLE led_products ADD COLUMN seller_count INTEGER DEFAULT 1;
+    END IF;
 END $$;
 

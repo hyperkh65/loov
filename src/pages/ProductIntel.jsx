@@ -1,9 +1,13 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { supabase } from '../lib/supabase'
-import { runDailyCollection } from '../lib/scraper'
 
 const C = '#00e5ff'
+const C2 = '#ff00d4' // Accent color
+const BG = '#05050a'
+const CARD_BG = 'rgba(20, 20, 30, 0.4)'
+const BORDER = 'rgba(255, 255, 255, 0.08)'
+const GLOW = '0 0 20px rgba(0, 229, 255, 0.15)'
 
 export default function ProductIntel() {
     const [report, setReport] = useState(null)
@@ -11,482 +15,475 @@ export default function ProductIntel() {
     const [loading, setLoading] = useState(true)
     const [collecting, setCollecting] = useState(false)
     const [progress, setProgress] = useState('')
-    const [filter, setFilter] = useState('all')
-    const [sort, setSort] = useState('price_asc')
+    const [viewMode, setViewMode] = useState('grid') // 'grid' or 'list'
 
-    // ── 리포트 + 제품 + 작업 상태 로드 ──
+    // Filters
+    const [activeCategory, setActiveCategory] = useState('all')
+    const [activeMaker, setActiveMaker] = useState('all')
+    const [priceRange, setPriceRange] = useState([0, 200000])
+    const [searchQuery, setSearchQuery] = useState('')
+    const [sort, setSort] = useState('latest')
+    const [certFilter, setCertFilter] = useState('all') // 'kc', 'ks', 'all'
+
     useEffect(() => {
         loadData()
-
-        // 실시간 작업 상태 구독
         const channel = supabase
             .channel('job-status')
-            .on('postgres_changes', {
-                event: 'UPDATE',
-                schema: 'public',
-                table: 'led_collection_jobs'
-            }, (payload) => {
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'led_collection_jobs' }, (payload) => {
                 const job = payload.new
                 if (job.status === 'RUNNING') {
                     setCollecting(true)
                     setProgress(job.progress || '◈ BACKGROUND SYNC IN PROGRESS...')
                 } else if (job.status === 'COMPLETED') {
                     setCollecting(false)
-                    setProgress(`◈ TASK COMPLETE: ${job.result_summary?.totalCollected || 0} ITEMS SYNCED TO NOTION & SUPABASE`)
+                    setProgress(`◈ TASK COMPLETE: ${job.result_summary?.totalCollected || 0} ITEMS SYNCED`)
                     loadData()
-                } else if (job.status === 'FAILED') {
-                    setCollecting(false)
-                    setProgress(`◈ SYSTEM ERROR: ${job.progress}`)
                 }
             })
             .subscribe()
-
         return () => supabase.removeChannel(channel)
     }, [])
 
     async function loadData() {
         setLoading(true)
-        // 최신 리포트
         const { data: reports } = await supabase.from('led_reports').select('*').order('generated_at', { ascending: false }).limit(1)
         if (reports?.length) setReport(reports[0])
 
-        // 제품 목록
-        const { data: prods } = await supabase.from('led_products').select('*').order('price', { ascending: true }).limit(500)
+        const { data: prods } = await supabase.from('led_products').select('*').order('collected_at', { ascending: false }).limit(2000)
         if (prods) setProducts(prods)
-
-        // 초기 작업 상태 확인
-        const { data: jobs } = await supabase.from('led_collection_jobs').select('*').eq('id', '00000000-0000-0000-0000-000000000001').single()
-        if (jobs?.status === 'RUNNING') {
-            setCollecting(true)
-            setProgress(jobs.progress || '◈ PREVIOUS TASK RESUMING...')
-        }
-
         setLoading(false)
     }
 
-    // ── 수집 신호 전송 (백엔드로 토스) ──
-    async function handleCollect() {
-        if (collecting) return
+    const filteredProducts = products.filter(p => {
+        const matchesCat = activeCategory === 'all' || p.category === activeCategory
+        const matchesMaker = activeMaker === 'all' || p.maker === activeMaker
+        const matchesPrice = p.price >= priceRange[0] && p.price <= priceRange[1]
+        const q = searchQuery.toLowerCase()
+        const matchesSearch = !q || p.name.toLowerCase().includes(q) || p.maker.toLowerCase().includes(q)
 
-        setCollecting(true)
-        setProgress('◈ TRIGGERING REMOTE COLLECTION ENGINE...')
+        const certText = (p.name + (p.specs ? JSON.stringify(p.specs) : '')).toLowerCase()
+        const hasKC = certText.includes('kc')
+        const hasKS = certText.includes('ks')
+        const matchesCert = certFilter === 'all' || (certFilter === 'kc' && hasKC) || (certFilter === 'ks' && hasKS)
 
-        // 작업 상태를 RUNNING으로 변경
-        await supabase.from('led_collection_jobs').update({
-            status: 'RUNNING',
-            progress: '◈ INITIALIZING BACKEND WORKER...',
-            started_at: new Date().toISOString()
-        }).eq('id', '00000000-0000-0000-0000-000000000001')
+        return matchesCat && matchesMaker && matchesPrice && matchesSearch && matchesCert
+    }).sort((a, b) => {
+        if (sort === 'price_asc') return a.price - b.price
+        if (sort === 'price_desc') return b.price - a.price
+        return new Date(b.collected_at) - new Date(a.collected_at)
+    })
 
-        // Edge Function 호출
-        try {
-            const { data, error } = await supabase.functions.invoke('led-scraper')
-            if (error) throw error
-        } catch (err) {
-            console.error('Trigger error:', err)
-            // 에러가 나더라도 Realtime 구독을 통해 상태가 업데이트될 수 있으므로 별도 처리는 생략 가능
-        }
+    const makers = [...new Set(products.map(p => p.maker))].sort()
+    const categories = [...new Set(products.map(p => p.category))].sort()
+
+    const calculateMarketDepth = (items) => {
+        if (!items || items.length === 0) return null;
+
+        const total = items.length;
+
+        // Certification
+        let kcCount = 0;
+        let ksCount = 0;
+        let bothCount = 0;
+        items.forEach(p => {
+            const text = (p.name + (p.specs ? JSON.stringify(p.specs) : '')).toLowerCase();
+            const hasKC = text.includes('kc');
+            const hasKS = text.includes('ks');
+            if (hasKC && hasKS) bothCount++;
+            else if (hasKC) kcCount++;
+            else if (hasKS) ksCount++;
+        });
+
+        const certification_stats = {
+            kc_total_ratio: parseFloat((((kcCount + bothCount) / total) * 100).toFixed(1)),
+            ks_total_ratio: parseFloat((((ksCount + bothCount) / total) * 100).toFixed(1))
+        };
+
+        // Price tiers
+        const tiers = {
+            'Entry (<₩5k)': 0,
+            'Mid (₩5k-20k)': 0,
+            'High (₩20k-50k)': 0,
+            'Premium (>₩50k)': 0
+        };
+        items.forEach(p => {
+            if (p.price < 5000) tiers['Entry (<₩5k)']++;
+            else if (p.price < 20000) tiers['Mid (₩5k-20k)']++;
+            else if (p.price < 50000) tiers['High (₩20k-50k)']++;
+            else tiers['Premium (>₩50k)']++;
+        });
+        const price_distribution = Object.entries(tiers).map(([tier, count]) => ({
+            tier,
+            ratio: parseFloat(((count / total) * 100).toFixed(1))
+        }));
+
+        return { certification_stats, price_distribution };
+    };
+
+    const marketDepth = report?.market_depth || calculateMarketDepth(products);
+
+    const selectStyle = {
+        background: BG,
+        border: `1px solid ${BORDER}`,
+        color: '#fff',
+        padding: '6px 12px',
+        borderRadius: 4,
+        fontSize: 11,
+        outline: 'none'
     }
 
-    // ── 필터/정렬 ──
-    const filteredProducts = products
-        .filter(p => filter === 'all' || p.category === filter)
-        .sort((a, b) => {
-            if (sort === 'price_asc') return a.price - b.price
-            if (sort === 'price_desc') return b.price - a.price
-            return a.name.localeCompare(b.name)
-        })
-
-    const categories = [...new Set(products.map(p => p.category))].filter(Boolean)
-
     return (
-        <div style={{ minHeight: '100vh', background: '#00020e', paddingTop: 90 }}>
-            <div className="container" style={{ maxWidth: 1200 }}>
+        <div style={{ minHeight: '100vh', background: BG, color: '#fff', paddingTop: 80, paddingBottom: 100, position: 'relative', overflow: 'hidden' }}>
+            {/* Background Glows */}
+            <div style={{ position: 'absolute', top: '-10%', left: '-10%', width: '40%', height: '40%', background: `radial-gradient(circle, ${C}08 0%, transparent 70%)`, pointerEvents: 'none' }} />
+            <div style={{ position: 'absolute', bottom: '-10%', right: '-10%', width: '50%', height: '50%', background: `radial-gradient(circle, ${C2}05 0%, transparent 70%)`, pointerEvents: 'none' }} />
 
-                {/* ── 헤더 ── */}
-                <motion.div
-                    initial={{ opacity: 0, y: -20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    style={{ marginBottom: 40 }}
-                >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-                        <div>
-                            <h1 style={{
-                                fontFamily: 'Outfit', fontWeight: 900, fontSize: 36,
-                                color: '#fff', letterSpacing: '-0.02em', marginBottom: 4,
-                            }}>
-                                <span style={{ color: C }}>◈</span> PRODUCT <span style={{ color: C }}>INTEL</span>
-                            </h1>
-                            <p style={{ fontFamily: 'monospace', fontSize: 11, color: `${C}60`, letterSpacing: '0.05em' }}>
-                                LED MARKET SEARCH ENGINE // AI POWERED ANALYSIS
-                            </p>
-                        </div>
-                        <motion.button
-                            whileHover={{ scale: 1.02, boxShadow: `0 0 20px ${C}30` }}
-                            whileTap={{ scale: 0.98 }}
-                            onClick={handleCollect}
-                            disabled={collecting}
-                            style={{
-                                padding: '12px 24px', borderRadius: 4,
-                                background: collecting ? 'transparent' : C,
-                                color: collecting ? C : '#000',
-                                border: `1px solid ${C}`, cursor: collecting ? 'wait' : 'pointer',
-                                fontFamily: 'monospace', fontWeight: 800, fontSize: 12,
-                                letterSpacing: '0.1em',
-                                transition: 'all 0.3s'
-                            }}
-                        >
-                            {collecting ? '◈ SYNCING...' : '◈ RUN COLLECTION'}
-                        </motion.button>
+            <div className="container" style={{ maxWidth: 1400, position: 'relative', zIndex: 1 }}>
+
+                {/* --- HEADER --- */}
+                <header style={{ marginBottom: 40, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                    <div>
+                        <h1 style={{ fontSize: 42, fontWeight: 900, letterSpacing: '-0.03em', margin: 0 }}>
+                            MARKET <span style={{ color: C }}>INTELLIGENCE</span>
+                        </h1>
+                        <p style={{ fontFamily: 'monospace', color: `${C}70`, fontSize: 12, marginTop: 4 }}>
+                            PROPRIETARY DATA HARVESTING // REAL-TIME ANALYSIS ENGINE
+                        </p>
                     </div>
-
-                    <AnimatePresence mode="wait">
-                        {progress && (
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                             <motion.div
-                                key="progress"
-                                initial={{ opacity: 0, height: 0 }}
-                                animate={{ opacity: 1, height: 'auto' }}
-                                exit={{ opacity: 0, height: 0 }}
-                                style={{
-                                    padding: '12px 16px',
-                                    background: `${C}08`, border: `1px solid ${C}18`,
-                                    borderRadius: 4, fontFamily: 'monospace', fontSize: 10, color: `${C}90`,
-                                    marginBottom: 20
-                                }}
-                            >
-                                <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ repeat: Infinity, duration: 2 }}>
-                                    {progress}
-                                </motion.span>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-
-                    {/* AI Insight Box */}
-                    {report?.ai_commentary && (
-                        <motion.div
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            style={{
-                                padding: '24px',
-                                background: `linear-gradient(135deg, ${C}15 0%, rgba(0,0,0,0) 100%)`,
-                                borderLeft: `4px solid ${C}`,
-                                borderRight: `1px solid ${C}10`,
-                                borderTop: `1px solid ${C}10`,
-                                borderBottom: `1px solid ${C}10`,
-                                borderRadius: '0 8px 8px 0',
-                                marginBottom: 32,
-                                position: 'relative',
-                                overflow: 'hidden'
-                            }}
-                        >
-                            <div style={{ position: 'absolute', top: -10, right: -10, fontSize: 90, color: `${C}05`, fontFamily: 'serif', zIndex: 0 }}>
-                                "
-                            </div>
-                            <h4 style={{ fontFamily: 'monospace', fontSize: 10, color: C, marginBottom: 12, letterSpacing: '0.3em', fontWeight: 800 }}>
-                                ◈ AI SMART COACH INSIGHT
-                            </h4>
-                            <p style={{ fontFamily: 'Outfit', fontSize: 16, color: '#e0e0e0', lineHeight: 1.6, margin: 0, position: 'relative', zIndex: 1, fontStyle: 'italic', fontWeight: 400 }}>
-                                {report.ai_commentary}
-                            </p>
-                        </motion.div>
-                    )}
-                </motion.div>
-
-                {/* ──  KPI 카드 ── */}
-                {report && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.1 }}
-                        style={{
-                            display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)',
-                            gap: 12, marginBottom: 32,
-                        }}
-                    >
-                        {[
-                            { label: 'TOTAL PRODUCTS', value: report.total_products?.toLocaleString(), icon: '◈' },
-                            { label: 'MANUFACTURERS', value: report.total_makers?.toLocaleString(), icon: '◈' },
-                            { label: 'CATEGORIES', value: report.total_categories, icon: '◈' },
-                            { label: 'AVG PRICE', value: `₩${report.overall_avg_price?.toLocaleString()}`, icon: '▸' },
-                            { label: 'PRICE RANGE', value: `₩${report.overall_min_price?.toLocaleString()} ~ ₩${report.overall_max_price?.toLocaleString()}`, icon: '▸', small: true },
-                        ].map(({ label, value, icon, small }, i) => (
-                            <div key={i} style={{
-                                padding: '18px 16px',
-                                background: `${C}04`, border: `1px solid ${C}12`,
-                                borderRadius: 4,
-                                clipPath: 'polygon(10px 0%, 100% 0%, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0% 100%, 0% 10px)',
-                            }}>
-                                <div style={{ fontFamily: 'monospace', fontSize: 8, color: `${C}60`, marginBottom: 8, letterSpacing: '0.12em' }}>
-                                    {icon} {label}
-                                </div>
-                                <div style={{
-                                    fontFamily: 'Outfit', fontWeight: 800,
-                                    fontSize: small ? 14 : 22, color: '#fff',
-                                }}>
-                                    {value || '—'}
-                                </div>
-                            </div>
-                        ))}
-                    </motion.div>
-                )}
-
-                {/* ── WASTE MONITOR (고평가 품목) ── */}
-                {report?.waste_items?.length > 0 && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.25 }}
-                        style={{
-                            marginBottom: 32, padding: '24px',
-                            background: `rgba(255, 50, 50, 0.04)`,
-                            border: `1px solid rgba(255, 50, 50, 0.15)`,
-                            borderRadius: 6,
-                        }}
-                    >
-                        <h3 style={{
-                            fontFamily: 'monospace', fontSize: 11, color: '#ff6b6b',
-                            letterSpacing: '0.15em', marginBottom: 16,
-                            display: 'flex', alignItems: 'center', gap: 8
-                        }}>
-                            <span style={{ fontSize: 14 }}>⚠️</span> WASTE MONITOR: OVERPRICED ITEMS
-                        </h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-                            {report.waste_items.map((item, i) => (
-                                <div key={i} style={{
-                                    padding: '14px', background: 'rgba(255, 255, 255, 0.02)',
-                                    border: '1px solid rgba(255, 255, 255, 0.05)', borderRadius: 4,
-                                    position: 'relative'
-                                }}>
-                                    <div style={{ position: 'absolute', top: 10, right: 10, fontFamily: 'monospace', fontSize: 10, color: '#ff6b6b', fontWeight: 800 }}>
-                                        +{item.diff_percent}%
-                                    </div>
-                                    <div style={{ fontFamily: 'Outfit', fontWeight: 600, fontSize: 12, color: '#fff', marginBottom: 8, paddingRight: 40, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                        {item.name}
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <div style={{ fontFamily: 'Outfit', fontSize: 14, fontWeight: 700, color: '#ff6b6b' }}>
-                                            ₩{item.price?.toLocaleString()}
-                                        </div>
-                                        <div style={{ fontFamily: 'monospace', fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>
-                                            Avg: ₩{item.avg_price?.toLocaleString()}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
+                                animate={{ opacity: [0.3, 1, 0.3] }}
+                                transition={{ duration: 2, repeat: Infinity }}
+                                style={{ width: 6, height: 6, borderRadius: '50%', background: '#4efaa6', boxShadow: '0 0 8px #4efaa6' }}
+                            />
+                            <span style={{ fontSize: 10, color: '#4efaa6', fontWeight: 900, fontFamily: 'monospace' }}>LIVE CONNECTION ACTIVE</span>
                         </div>
-                    </motion.div>
-                )}
-
-                {/* ── 카테고리별 분석 ── */}
-                {report?.category_stats?.length > 0 && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.2 }}
-                        style={{
-                            marginBottom: 32, padding: '24px',
-                            background: `${C}03`, border: `1px solid ${C}10`,
-                            borderRadius: 6,
-                        }}
-                    >
-                        <h3 style={{
-                            fontFamily: 'monospace', fontSize: 11, color: `${C}90`,
-                            letterSpacing: '0.15em', marginBottom: 16,
-                        }}>
-                            ◈ CATEGORY BREAKDOWN
-                        </h3>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
-                            {report.category_stats.map((cat, i) => (
-                                <div key={i} style={{
-                                    padding: '14px', background: `${C}06`,
-                                    border: `1px solid ${C}0e`, borderRadius: 4,
-                                }}>
-                                    <div style={{ fontFamily: 'Outfit', fontWeight: 600, fontSize: 13, color: '#fff', marginBottom: 6 }}>
-                                        {cat.category}
-                                    </div>
-                                    <div style={{ fontFamily: 'monospace', fontSize: 9, color: `${C}70`, lineHeight: 1.8 }}>
-                                        Count: {cat.count} · Avg: ₩{cat.avg?.toLocaleString()}<br />
-                                        Min: ₩{cat.min?.toLocaleString()} · Max: ₩{cat.max?.toLocaleString()}
-                                    </div>
-                                    {/* 가격 범위 바 */}
-                                    <div style={{ marginTop: 8, height: 3, background: `${C}15`, borderRadius: 2 }}>
-                                        <div style={{
-                                            width: `${Math.min(100, (cat.avg / (report.overall_max_price || 1)) * 100)}%`,
-                                            height: '100%', background: C, borderRadius: 2,
-                                        }} />
-                                    </div>
-                                </div>
-                            ))}
+                        <div>
+                            <div style={{ fontSize: 10, color: `${C}50`, fontFamily: 'monospace', marginBottom: 2 }}>LAST INTELLIGENCE HARVEST</div>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>{report ? new Date(report.generated_at).toLocaleString() : 'PENDING SYNC'}</div>
                         </div>
-                    </motion.div>
-                )}
-
-                {/* ── TOP 제조사 ── */}
-                {report?.top_makers?.length > 0 && (
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: 0.3 }}
-                        style={{
-                            marginBottom: 32, padding: '24px',
-                            background: `${C}03`, border: `1px solid ${C}10`,
-                            borderRadius: 6,
-                        }}
-                    >
-                        <h3 style={{
-                            fontFamily: 'monospace', fontSize: 11, color: `${C}90`,
-                            letterSpacing: '0.15em', marginBottom: 16,
-                        }}>
-                            ◈ TOP MANUFACTURERS
-                        </h3>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                            {report.top_makers.map((m, i) => {
-                                const maxCount = report.top_makers[0]?.count || 1
-                                return (
-                                    <div key={i} style={{
-                                        padding: '8px 14px', borderRadius: 4,
-                                        background: `rgba(0,229,255,${0.03 + (m.count / maxCount) * 0.08})`,
-                                        border: `1px solid ${C}${Math.round((m.count / maxCount) * 30 + 5).toString(16).padStart(2, '0')}`,
-                                        fontFamily: 'monospace', fontSize: 10,
-                                        display: 'flex', alignItems: 'center', gap: 8,
-                                    }}>
-                                        <span style={{ color: '#fff' }}>{m.name}</span>
-                                        <span style={{ color: C, fontSize: 9 }}>{m.count}</span>
-                                    </div>
-                                )
-                            })}
-                        </div>
-                    </motion.div>
-                )}
-
-                {/* ── 필터/정렬 컨트롤 ── */}
-                <div style={{
-                    display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16,
-                    fontFamily: 'monospace', fontSize: 10,
-                }}>
-                    <span style={{ color: `${C}60` }}>◈ FILTER:</span>
-                    <select
-                        value={filter}
-                        onChange={e => setFilter(e.target.value)}
-                        style={selectStyle}
-                    >
-                        <option value="all">All Categories</option>
-                        {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-
-                    <span style={{ color: `${C}60`, marginLeft: 12 }}>◈ SORT:</span>
-                    <select
-                        value={sort}
-                        onChange={e => setSort(e.target.value)}
-                        style={selectStyle}
-                    >
-                        <option value="price_asc">Price ↑</option>
-                        <option value="price_desc">Price ↓</option>
-                        <option value="name">Name A-Z</option>
-                    </select>
-
-                    <span style={{ color: `${C}40`, marginLeft: 'auto' }}>
-                        {filteredProducts.length} results
-                    </span>
-                </div>
-
-                {/* ── 제품 리스트 테이블 ── */}
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.4 }}
-                    style={{
-                        background: `${C}03`, border: `1px solid ${C}10`,
-                        borderRadius: 6, overflow: 'hidden', marginBottom: 80,
-                    }}
-                >
-                    {/* 테이블 헤더 */}
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: '60px 1fr 140px 130px 100px',
-                        padding: '10px 16px',
-                        background: `${C}08`,
-                        borderBottom: `1px solid ${C}12`,
-                        fontFamily: 'monospace', fontSize: 9, color: `${C}70`,
-                        letterSpacing: '0.1em',
-                    }}>
-                        <span>#</span>
-                        <span>PRODUCT NAME</span>
-                        <span>MANUFACTURER</span>
-                        <span>CATEGORY</span>
-                        <span style={{ textAlign: 'right' }}>PRICE</span>
                     </div>
+                </header>
 
-                    {/* 로딩 */}
-                    {loading && (
-                        <div style={{ padding: '40px', textAlign: 'center', color: `${C}50`, fontFamily: 'monospace', fontSize: 11 }}>
-                            <motion.span animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.5 }}>
-                                ◈ LOADING DATA...
-                            </motion.span>
+                <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 32 }}>
+
+                    {/* --- SIDEBAR FILTERS --- */}
+                    <aside style={{ position: 'sticky', top: 100, height: 'fit-content' }}>
+                        <section style={sideSectionStyle}>
+                            <h3 style={sideTitleStyle}>◈ SEARCH ENGINE</h3>
+                            <input
+                                type="text"
+                                placeholder="Model or Vendor..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                style={inputStyle}
+                            />
+                        </section>
+
+                        <section style={sideSectionStyle}>
+                            <h3 style={sideTitleStyle}>◈ CATEGORY</h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <button onClick={() => setActiveCategory('all')} style={filterBtnStyle(activeCategory === 'all')}>ALL CATEGORIES</button>
+                                {categories.map(cat => (
+                                    <button key={cat} onClick={() => setActiveCategory(cat)} style={filterBtnStyle(activeCategory === cat)}>{cat}</button>
+                                ))}
+                            </div>
+                        </section>
+
+                        <section style={sideSectionStyle}>
+                            <h3 style={sideTitleStyle}>◈ QUALITY ASSURANCE</h3>
+                            <div style={{ display: 'flex', gap: 8 }}>
+                                <button onClick={() => setCertFilter('all')} style={filterBtnStyle(certFilter === 'all')}>ALL</button>
+                                <button onClick={() => setCertFilter('kc')} style={filterBtnStyle(certFilter === 'kc')}>KC ONLY</button>
+                                <button onClick={() => setCertFilter('ks')} style={filterBtnStyle(certFilter === 'ks')}>KS ONLY</button>
+                            </div>
+                        </section>
+
+                        <section style={sideSectionStyle}>
+                            <h3 style={sideTitleStyle}>◈ PRICE SEGMENTATION</h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                <input type="range" min="0" max="200000" step="5000" value={priceRange[1]} onChange={e => setPriceRange([0, parseInt(e.target.value)])} style={{ accentColor: C }} />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontFamily: 'monospace', fontSize: 10, color: `${C}80` }}>
+                                    <span>₩0</span>
+                                    <span>₩{priceRange[1].toLocaleString()}</span>
+                                </div>
+                            </div>
+                        </section>
+
+                        {report?.waste_items?.length > 0 && (
+                            <section style={{
+                                marginBottom: 32,
+                                borderLeft: `2px solid ${C2}`,
+                                background: `linear-gradient(90deg, ${C2}08, transparent)`,
+                                padding: '16px 20px',
+                                borderRadius: '0 8px 8px 0'
+                            }}>
+                                <h3 style={{ ...sideTitleStyle, color: C2, marginBottom: 12 }}>◈ WASTE DETECTION</h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                    {report.waste_items.slice(0, 4).map((w, i) => (
+                                        <div key={i}>
+                                            <div style={{ fontSize: 11, fontWeight: 700, color: '#fafafa', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ fontSize: 13, color: C2, fontWeight: 900, fontFamily: 'monospace' }}>₩{w.price.toLocaleString()}</span>
+                                                <span style={{ fontSize: 9, background: `${C2}20`, padding: '2px 6px', borderRadius: 4, color: C2, fontWeight: 800 }}>+{w.diff_percent}% HIGH</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </section>
+                        )}
+                    </aside>
+
+                    {/* --- MAIN CONTENT --- */}
+                    <main>
+                        {/* AI Insights & KPI Row */}
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, marginBottom: 32 }}>
+                            <div style={{ ...cardStyle, background: `linear-gradient(135deg, ${C}10 0%, transparent 100%)`, borderLeft: `4px solid ${C}` }}>
+                                <h4 style={{ fontSize: 10, fontFamily: 'monospace', color: C, marginBottom: 12 }}>◈ AI STRATEGIC SUMMARY</h4>
+                                <p style={{ fontSize: 16, lineHeight: 1.6, color: '#e0e0e0', margin: 0, fontStyle: 'italic' }}>
+                                    {report?.ai_commentary || "기다려봐! 지금 시장 데이터를 싹 다 분석해서 끝내주는 의견을 정리하고 있어... 😉"}
+                                </p>
+                            </div>
+                            <div style={cardStyle}>
+                                <div style={{ textAlign: 'center' }}>
+                                    <div style={{ fontSize: 10, fontFamily: 'monospace', color: `${C}60`, marginBottom: 8 }}>MARKET COVERAGE</div>
+                                    <div style={{ fontSize: 42, fontWeight: 900, color: '#fff' }}>{report?.total_products?.toLocaleString() || '0'}</div>
+                                    <div style={{ fontSize: 11, color: `${C}80`, marginTop: 4 }}>Unique Stock Keeping Units (SKUs)</div>
+                                </div>
+                            </div>
                         </div>
-                    )}
 
-                    {/* 데이터 없음 */}
-                    {!loading && filteredProducts.length === 0 && (
-                        <div style={{ padding: '60px 20px', textAlign: 'center' }}>
-                            <p style={{ fontFamily: 'Outfit', fontSize: 16, color: '#fff', marginBottom: 10 }}>
-                                No products collected yet
-                            </p>
-                            <p style={{ fontFamily: 'monospace', fontSize: 11, color: `${C}50`, marginBottom: 20 }}>
-                                Click "RUN COLLECTION" to start the daily LED market scan
-                            </p>
+                        {/* Visual Insights Section */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24, marginBottom: 40 }}>
+                            <div style={{ ...cardStyle, gridColumn: 'span 1' }}>
+                                <h4 style={graphTitleStyle}>BRAND DOMINANCE</h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 20 }}>
+                                    {report?.top_makers?.slice(0, 5).map((m, i) => (
+                                        <div key={i}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 6 }}>
+                                                <span style={{ fontWeight: 600 }}>{m.name}</span>
+                                                <span style={{ color: C, fontWeight: 900 }}>{m.share}%</span>
+                                            </div>
+                                            <div style={{ height: 6, background: 'rgba(255,255,255,0.03)', borderRadius: 3, overflow: 'hidden' }}>
+                                                <motion.div initial={{ width: 0 }} animate={{ width: `${m.share}%` }} style={{ height: '100%', background: `linear-gradient(90deg, ${C}, ${C}80)`, borderRadius: 3 }} />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div style={{ ...cardStyle }}>
+                                <h4 style={graphTitleStyle}>CATEGORY COMPOSITION</h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 20 }}>
+                                    {report?.category_stats && Object.entries(report.category_stats).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([cat, count], i) => {
+                                        const share = ((count / (report.total_products || 1)) * 100).toFixed(1);
+                                        return (
+                                            <div key={i}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 6 }}>
+                                                    <span style={{ fontWeight: 600 }}>{cat}</span>
+                                                    <span style={{ color: C2, fontWeight: 900 }}>{share}%</span>
+                                                </div>
+                                                <div style={{ height: 6, background: 'rgba(255,255,255,0.03)', borderRadius: 3, overflow: 'hidden' }}>
+                                                    <motion.div initial={{ width: 0 }} animate={{ width: `${share}%` }} style={{ height: '100%', background: `linear-gradient(90deg, ${C2}, ${C2}80)`, borderRadius: 3 }} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            <div style={cardStyle}>
+                                <h4 style={graphTitleStyle}>CERTIFICATION LANDSCAPE</h4>
+                                <div style={{ height: 160, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: 20, marginTop: 20, padding: '10px 20px' }}>
+                                    {marketDepth?.certification_stats && (
+                                        <>
+                                            <div style={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
+                                                <motion.div
+                                                    initial={{ height: 0 }}
+                                                    animate={{ height: `${marketDepth.certification_stats.kc_total_ratio}%` }}
+                                                    style={{ background: `linear-gradient(to top, ${C}, ${C}40)`, borderRadius: '6px 6px 0 0', width: '100%', border: `1px solid ${C}50` }}
+                                                />
+                                                <div style={{ fontSize: 10, fontWeight: 800, color: C, marginTop: 12 }}>{marketDepth.certification_stats.kc_total_ratio}%</div>
+                                                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>KC COMPLIANT</div>
+                                            </div>
+                                            <div style={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
+                                                <motion.div
+                                                    initial={{ height: 0 }}
+                                                    animate={{ height: `${marketDepth.certification_stats.ks_total_ratio}%` }}
+                                                    style={{ background: `linear-gradient(to top, ${C2}, ${C2}40)`, borderRadius: '6px 6px 0 0', width: '100%', border: `1px solid ${C2}50` }}
+                                                />
+                                                <div style={{ fontSize: 10, fontWeight: 800, color: C2, marginTop: 12 }}>{marketDepth.certification_stats.ks_total_ratio}%</div>
+                                                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>KS STANDARD</div>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div style={cardStyle}>
+                                <h4 style={graphTitleStyle}>PRICE DISTRIBUTION TIERS</h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 20 }}>
+                                    {marketDepth?.price_distribution?.map((tier, i) => (
+                                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                                            <div style={{ fontSize: 9, width: 90, color: 'rgba(255,255,255,0.6)', fontWeight: 600 }}>{tier.tier}</div>
+                                            <div style={{ flex: 1, height: 6, background: 'rgba(255,255,255,0.03)', borderRadius: 3, overflow: 'hidden' }}>
+                                                <motion.div
+                                                    initial={{ width: 0 }}
+                                                    animate={{ width: `${tier.ratio}%` }}
+                                                    style={{ height: '100%', background: i % 2 === 0 ? C : C2 }}
+                                                />
+                                            </div>
+                                            <div style={{ fontSize: 10, width: 35, fontWeight: 700, textAlign: 'right' }}>{tier.ratio}%</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
                         </div>
-                    )}
 
-                    {/* 제품 행 */}
-                    {filteredProducts.slice(0, 100).map((p, i) => (
-                        <motion.div
-                            key={p.external_id || i}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: Math.min(i * 0.02, 0.5) }}
-                            style={{
-                                display: 'grid',
-                                gridTemplateColumns: '60px 1fr 140px 130px 100px',
-                                padding: '10px 16px',
-                                borderBottom: `1px solid ${C}06`,
-                                alignItems: 'center',
-                                fontSize: 12,
-                                transition: 'background 0.2s',
-                            }}
-                            onMouseEnter={e => e.currentTarget.style.background = `${C}06`}
-                            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                        >
-                            <span style={{ fontFamily: 'monospace', fontSize: 9, color: `${C}40` }}>{i + 1}</span>
-                            <span style={{ fontFamily: 'Outfit', fontWeight: 500, color: '#e8e8e8', fontSize: 12, overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                                {p.name}
-                            </span>
-                            <span style={{ fontFamily: 'monospace', fontSize: 10, color: `${C}70` }}>{p.maker}</span>
-                            <span style={{ fontFamily: 'monospace', fontSize: 10, color: `${C}50` }}>{p.category}</span>
-                            <span style={{ fontFamily: 'Outfit', fontWeight: 700, fontSize: 13, color: '#fff', textAlign: 'right' }}>
-                                ₩{p.price?.toLocaleString()}
-                            </span>
-                        </motion.div>
-                    ))}
-
-                    {filteredProducts.length > 100 && (
-                        <div style={{ padding: '12px', textAlign: 'center', fontFamily: 'monospace', fontSize: 9, color: `${C}40` }}>
-                            ◈ Showing 100 of {filteredProducts.length} results
+                        {/* List Controls */}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                            <div style={{ fontSize: 12, color: `${C}80`, fontFamily: 'monospace' }}>
+                                SHOWING {filteredProducts.length} ITEMS // {activeCategory.toUpperCase()}
+                            </div>
+                            <div style={{ display: 'flex', gap: 10 }}>
+                                <select value={sort} onChange={e => setSort(e.target.value)} style={selectStyle}>
+                                    <option value="latest">LATEST COLLECTED</option>
+                                    <option value="price_asc">PRICE ASCENDING</option>
+                                    <option value="price_desc">PRICE DESCENDING</option>
+                                </select>
+                            </div>
                         </div>
-                    )}
-                </motion.div>
+
+                        {/* Results Grid/List */}
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 20 }}>
+                            {filteredProducts.map((p, i) => (
+                                <motion.div
+                                    key={p.id}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: Math.min(i * 0.02, 0.5) }}
+                                    style={productCardStyle}
+                                >
+                                    <div style={{ height: 140, background: '#111', position: 'relative', overflow: 'hidden' }}>
+                                        {p.image_url ? (
+                                            <img src={p.image_url} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'contain', padding: 10 }} />
+                                        ) : (
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'rgba(255,255,255,0.1)', fontSize: 10 }}>NO IMAGE</div>
+                                        )}
+                                        <div style={{ position: 'absolute', top: 8, right: 8, padding: '4px 8px', background: `${BG}90`, backdropFilter: 'blur(10px)', border: `1px solid ${BORDER}`, borderRadius: 4, fontSize: 9, fontWeight: 900 }}>
+                                            {p.maker}
+                                        </div>
+                                    </div>
+                                    <div style={{ padding: 16 }}>
+                                        <h4 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 10px 0', height: 40, overflow: 'hidden', color: '#fff' }}>{p.name}</h4>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 15, height: 20 }}>
+                                            {(p.name + JSON.stringify(p.specs || {})).toLowerCase().includes('kc') && <span style={badgeStyle('#4caf50')}>KC</span>}
+                                            {(p.name + JSON.stringify(p.specs || {})).toLowerCase().includes('ks') && <span style={badgeStyle('#2196f3')}>KS</span>}
+                                            {p.specs?.wattage && <span style={badgeStyle(C)}>{p.specs.wattage}</span>}
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                                            <div>
+                                                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace' }}>RETAIL PRICE</div>
+                                                <div style={{ fontSize: 18, fontWeight: 900, color: C }}>₩{p.price.toLocaleString()}</div>
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace' }}>SELLERS</div>
+                                                <div style={{ fontSize: 12, fontWeight: 700 }}>{p.seller_count || 1}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            ))}
+                        </div>
+                    </main>
+                </div>
             </div>
         </div>
     )
 }
 
-const selectStyle = {
-    background: `rgba(0,229,255,0.06)`,
-    border: `1px solid rgba(0,229,255,0.15)`,
-    borderRadius: 3,
+const sideSectionStyle = {
+    marginBottom: 32,
+    paddingBottom: 24,
+    borderBottom: `1px solid ${BORDER}`
+}
+
+const sideTitleStyle = {
+    fontFamily: 'monospace',
+    fontSize: 10,
+    color: `${C}60`,
+    letterSpacing: '0.2em',
+    marginBottom: 16,
+    fontWeight: 800
+}
+
+const inputStyle = {
+    width: '100%',
+    background: 'rgba(255,255,255,0.05)',
+    border: `1px solid ${BORDER}`,
+    padding: '10px 14px',
+    borderRadius: 6,
     color: '#fff',
-    padding: '4px 10px',
+    fontSize: 13,
+    outline: 'none'
+}
+
+const filterBtnStyle = (active) => ({
+    width: '100%',
+    textAlign: 'left',
+    padding: '8px 12px',
+    background: active ? `${C}15` : 'transparent',
+    border: 'none',
+    color: active ? C : 'rgba(255,255,255,0.5)',
+    fontSize: 11,
+    fontWeight: active ? 800 : 400,
+    borderRadius: 4,
+    cursor: 'pointer',
+    transition: 'all 0.2s',
+    fontFamily: 'Outfit'
+})
+
+const cardStyle = {
+    background: CARD_BG,
+    border: `1px solid ${BORDER}`,
+    borderRadius: 12,
+    padding: 24,
+    backdropFilter: 'blur(10px)',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.2)',
+}
+
+const productCardStyle = {
+    background: 'rgba(255, 255, 255, 0.02)',
+    border: `1px solid ${BORDER}`,
+    borderRadius: 16,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    backdropFilter: 'blur(12px)',
+    transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+}
+
+const graphTitleStyle = {
     fontSize: 10,
     fontFamily: 'monospace',
-    outline: 'none',
+    color: `${C}90`,
+    letterSpacing: '0.2em',
+    margin: '0 0 20px 0',
+    fontWeight: 900,
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    textTransform: 'uppercase'
 }
+
+const badgeStyle = (color) => ({
+    fontSize: 8,
+    padding: '2px 5px',
+    borderRadius: 2,
+    background: `${color}20`,
+    color: color,
+    border: `1px solid ${color}40`,
+    fontWeight: 900,
+    fontFamily: 'monospace'
+})

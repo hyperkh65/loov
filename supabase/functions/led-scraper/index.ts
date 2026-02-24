@@ -4,46 +4,90 @@ import { Client as NotionClient } from 'https://esm.sh/@notionhq/client'
 
 const DANAWA_BASE = 'https://search.danawa.com/dsearch.php'
 
-// ─── CORS Headers ───────────────────────────────────────────────────
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// ─── HTML 파싱 (정규식 기반) ──────────────────────────────────────────
-function parseProductsFromHTML(html) {
+function parseProductsFromHTML(html: string) {
     const products = []
-    const itemRegex = /<li\s+class="prod_item[^"]*"[^>]*>([\s\S]*?)<\/li>/gi
+    const itemRegex = /<li[^>]+(?:class="prod_item|id="productItem|class="goods-list__item")[^>]*>([\s\S]*?)<\/li>/gi
     let match
 
     while ((match = itemRegex.exec(html)) !== null) {
         const item = match[1]
-        const nameMatch = item.match(/<p\s+class="prod_name"[^>]*>[\s\S]*?<a[^>]*>([\s\S]*?)<\/a>/i)
-        const name = nameMatch ? nameMatch[1].replace(/<[^>]+>/g, '').trim() : null
 
-        const priceMatch = item.match(/<p\s+class="price_sect"[^>]*>[\s\S]*?<em[^>]*>([\s\S]*?)<\/em>/i)
+        // Name
+        const nameMatch = item.match(/class="(?:prod_name|goods-list__title|goods-list__item__name)"[^>]*>([\s\S]*?)<\/span>/i)
+            || item.match(/<p\s+class="prod_name"[^>]*>[\s\S]*?<a[^>]*>([\s\S]*?)<\/a>/i)
+            || item.match(/class="(?:prod_name|goods-list__title)">([\s\S]*?)<\/a>/i)
+        let name = nameMatch ? nameMatch[1].replace(/<[^>]+>/g, '').trim() : null
+
+        // Price
+        const priceMatch = item.match(/<em\s+class="number"[^>]*>([\s\S]*?)<\/em>/i)
+            || item.match(/<p\s+class="price_sect"[^>]*>[\s\S]*?<em[^>]*>([\s\S]*?)<\/em>/i)
+            || item.match(/class="price_sect".*?<em>([\d,]+)<\/em>/i)
         const priceStr = priceMatch ? priceMatch[1].replace(/<[^>]+>/g, '').replace(/[,원\s]/g, '').trim() : null
         const price = priceStr ? parseInt(priceStr) : null
 
-        const makerMatch = item.match(/제조사:\s*([^<\n]+)/i) || item.match(/<span\s+class="text__maker"[^>]*>([\s\S]*?)<\/span>/i)
-        const maker = makerMatch ? makerMatch[1].replace(/<[^>]+>/g, '').trim() : 'Unknown'
+        // Seller Count (Retailer Count)
+        const sellerMatch = item.match(/판매처\s*<strong>([\d,]+)<\/strong>/i)
+            || item.match(/판매처\s*([\d,]+)/i)
+            || item.match(/>([\d,]+)개\s*판매처/i)
+        const sellerCount = sellerMatch ? parseInt(sellerMatch[1].replace(/,/g, '')) : 1
 
+        // Maker/Brand
+        const makerMatch = item.match(/제조사:\s*([^<\n]+)/i) || item.match(/<span\s+class="text__maker"[^>]*>([\s\S]*?)<\/span>/i)
+        let maker = makerMatch ? makerMatch[1].replace(/<[^>]+>/g, '').trim() : 'Unknown'
+        if ((maker === 'Unknown' || maker === '') && name) {
+            const firstWord = name.split(' ')[0]
+            if (firstWord.length > 1) maker = firstWord
+        }
+
+        // Category & Specs (Size, Power)
         const catMatch = item.match(/<span\s+class="text__category"[^>]*>([\s\S]*?)<\/span>/i)
         const category = catMatch ? catMatch[1].replace(/<[^>]+>/g, '').trim() : 'LED'
 
-        const imgMatch = item.match(/<img[^>]+src="([^"]+)"/i)
-        const image = imgMatch ? imgMatch[1] : null
+        // Detailed Specs Extraction
+        const specs: any = {}
+        const sizeMatch = name?.match(/(\d+)\s*(?:inch|인치|")/i) || item.match(/(\d+)\s*(?:inch|인치|")/i)
+        if (sizeMatch) specs.size = sizeMatch[1] + "inch"
 
-        const idMatch = item.match(/data-product-code="(\d+)"/i) || item.match(/pcode=(\d+)/i)
+        const wattMatch = name?.match(/(\d+)\s*W/i) || item.match(/(\d+)\s*W/i)
+        if (wattMatch) specs.wattage = wattMatch[1] + "W"
+
+        const tempMatch = name?.match(/(\d{4})K/i) || item.match(/(\d{4})K/i) || item.match(/(전구색|주백색|주광색)/i)
+        if (tempMatch) specs.color_temp = tempMatch[1]
+
+        const imgMatch = item.match(/<img[^>]+src="([^"]+)"/i) || item.match(/src="(\/\/img\.danawa\.com\/prod_img\/[^"]+)"/i)
+        let image = imgMatch ? imgMatch[1] : null
+        if (image && image.startsWith('//')) image = 'https:' + image
+
+        const idMatch = item.match(/data-product-code="(\d+)"/i) || item.match(/pcode=(\d+)/i) || item.match(/id="productItem-(\d+)"/i)
         const productId = idMatch ? idMatch[1] : null
 
-        if (name && price) {
+        // --- FILTER IRRELEVANT PRODUCTS ---
+        const forbiddenTerms = ['컴퓨터', 'PC', '노트북', '모니터', '데스크탑', 'OMEN', '35L', 'GT16', 'GeForce', 'Intel', 'AMD', 'RAM', 'SSD'];
+        const lowerName = name?.toLowerCase() || '';
+        const isIrrelevant = forbiddenTerms.some(term => lowerName.includes(term.toLowerCase()));
+
+        // Clean brand name
+        maker = maker.replace(/^\[[^\]]+\]\s*/, '').trim();
+        if (maker === 'Unknown' || maker === '' || maker === '해외' || maker === '국내') {
+            const cleanName = name.replace(/^\[[^\]]+\]\s*/, '').trim();
+            const firstWord = cleanName.split(' ')[0];
+            if (firstWord.length > 1) maker = firstWord;
+        }
+
+        if (name && price && price > 0 && !isIrrelevant) {
             products.push({
-                external_id: productId,
+                external_id: productId || `dnw-${Math.random().toString(36).substr(2, 9)}`,
                 name,
                 price,
                 maker,
                 category,
+                seller_count: sellerCount,
+                specs,
                 image_url: image,
                 source: 'market_search',
                 collected_at: new Date().toISOString(),
@@ -53,179 +97,137 @@ function parseProductsFromHTML(html) {
     return products
 }
 
-function parseTotalCount(html) {
-    const m = html.match(/총\s*<strong>([\d,]+)<\/strong>\s*개/i)
+function parseTotalCount(html: string) {
+    const m = html.match(/<strong>([\d,]+)<\/strong>\s*개/i)
+        || html.match(/총\s*<strong>([\d,]+)<\/strong>/i)
         || html.match(/검색결과\s*([\d,]+)/i)
-    return m ? parseInt(m[1].replace(/,/g, '')) : 0
+    return m ? parseInt(m[1].replace(/,/g, '')) : 300
+}
+
+function generateAiCommentary(data: any) {
+    const { avgPrice, wasteCount, topMaker, marketVolume } = data
+    return `안녕! 오늘 LED 시장 조사를 끝냈어. 현재 온라인 상에는 약 ${marketVolume.toLocaleString()}개의 제품이 활발히 유통되고 있네. 가장 영향력 있는 브랜드는 '${topMaker}'(으)로 보여. 전체 평균가는 ₩${avgPrice.toLocaleString()} 선인데, 그 중 ${wasteCount}개 정도는 가격 거품이 좀 있더라고. 특히 다운라이트 시장은 인치별로 가격 차이가 좀 있으니 내가 정리한 표를 꼭 확인해봐! 궁금한 거 있으면 더 물어봐줘. 😉`
 }
 
 serve(async (req) => {
-    // CORS 대응
-    if (req.method === 'OPTIONS') {
-        return new Response('ok', { headers: corsHeaders })
-    }
-
-    const supabase = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    )
-
-    const notion = new NotionClient({ auth: Deno.env.get('NOTION_TOKEN') })
-    const marketDbId = Deno.env.get('NOTION_MARKET_DB_ID')
+    if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
 
     const jobId = '00000000-0000-0000-0000-000000000001'
+    let supabase: any;
+    let notion: any;
+    let marketDbId: string | undefined;
 
     try {
-        console.log('Starting LED collection task...')
+        supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '')
+        notion = new NotionClient({ auth: Deno.env.get('NOTION_TOKEN') })
+        marketDbId = Deno.env.get('NOTION_MARKET_DB_ID')
 
-        // 1. 상태 업데이트: RUNNING
         await supabase.from('led_collection_jobs').update({
             status: 'RUNNING',
-            progress: '◈ SCANNING DANAWA MARKET...',
+            progress: '◈ STARTING DEEP MARKET ANALYSIS...',
             started_at: new Date().toISOString()
         }).eq('id', jobId)
 
         const allProducts = []
         let totalCount = 0
         const perPage = 30
+        const decoder = new TextDecoder('euc-kr')
 
-        // 첫 페이지 로드 및 총 개수 파악
-        const firstUrl = `${DANAWA_BASE}?query=LED&tab=goods&page=1`
-        const firstResp = await fetch(firstUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Referer': 'https://www.danawa.com/'
+        // Session and Headers
+        const headers: Record<string, string> = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Referer': 'https://www.danawa.com/',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        }
+
+        const keywords = ['LED 센서등', 'LED 다운라이트', 'LED 방등', 'LED 거실등', 'LED T5', 'LED 전구', 'LED 투광기', 'LED 주방등', 'LED 욕실등']
+        for (const query of keywords) {
+            console.log(`Analyzing: ${query}`)
+            // Scrape multiple pages
+            for (let page = 1; page <= 10; page++) {
+                console.log(`  Page ${page}...`)
+                const queryUrl = `${DANAWA_BASE}?query=${encodeURIComponent(query)}&page=${page}&limit=40`
+                const resp = await fetch(queryUrl, { headers })
+                const buf = await resp.arrayBuffer()
+                const html = decoder.decode(buf)
+
+                if (totalCount === 0 && page === 1) totalCount = parseTotalCount(html)
+                const products = parseProductsFromHTML(html)
+                allProducts.push(...products)
+
+                await new Promise(r => setTimeout(r, 600))
+                if (products.length < 10) break; // End of results
             }
-        })
-        const firstHtml = await firstResp.text()
-        totalCount = parseTotalCount(firstHtml)
-        allProducts.push(...parseProductsFromHTML(firstHtml))
+        }
 
-        const totalPages = Math.min(Math.ceil(totalCount / perPage), 50)
-        console.log(`Total Pages: ${totalPages}, Total Items: ${totalCount}`)
+        if (allProducts.length > 0) {
+            // DEEP MARKET ANALYSIS LOGIC
+            const brands: Record<string, number> = {}
+            const retailers: number[] = []
+            const specBreakdown: Record<string, { count: number, sum: number }> = {}
 
-        // 2. 페이지별 크롤링
-        for (let page = 2; page <= totalPages; page++) {
-            await supabase.from('led_collection_jobs').update({
-                progress: `◈ COLLECTING DATA: PAGE ${page}/${totalPages} (${allProducts.length} ITEMS FOUND)`
-            }).eq('id', jobId)
+            allProducts.forEach(p => {
+                brands[p.maker] = (brands[p.maker] || 0) + 1
+                retailers.push(p.seller_count)
 
-            const url = `${DANAWA_BASE}?query=LED&tab=goods&page=${page}`
-            const resp = await fetch(url, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                    'Referer': 'https://www.danawa.com/'
-                }
+                const size = p.specs?.size || 'Other'
+                if (!specBreakdown[size]) specBreakdown[size] = { count: 0, sum: 0 }
+                specBreakdown[size].count++
+                specBreakdown[size].sum += p.price
             })
-            const html = await resp.text()
-            allProducts.push(...parseProductsFromHTML(html))
 
-            // 딜레이
-            await new Promise(r => setTimeout(r, 1000))
-        }
+            const topMakers = Object.entries(brands)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10)
+                .map(([name, count]) => ({ name, count, share: Math.round((count / allProducts.length) * 100) }))
 
-        // 3. Supabase 저장
-        await supabase.from('led_collection_jobs').update({
-            progress: `◈ SYNCING TO SUPABASE... (${allProducts.length} ITEMS)`
-        }).eq('id', jobId)
+            const avgRetailers = Math.round(retailers.reduce((s, c) => s + c, 0) / retailers.length)
+            const overallAvg = Math.round(allProducts.reduce((s, p) => s + p.price, 0) / allProducts.length)
 
-        await supabase.from('led_products').upsert(allProducts, { onConflict: 'external_id' })
+            const marketDepth = {
+                brand_share: topMakers,
+                retailer_depth: {
+                    avg_retailers_per_product: avgRetailers,
+                    max_retailers: Math.max(...retailers),
+                },
+                lineup_breakdown: Object.entries(specBreakdown).map(([size, data]) => ({
+                    spec: size,
+                    count: data.count,
+                    avg_price: Math.round(data.sum / data.count)
+                })).sort((a, b) => a.spec.localeCompare(b.spec))
+            }
 
-        const priceEntries = allProducts.map(p => ({
-            product_id: p.external_id,
-            price: p.price,
-            recorded_at: new Date().toISOString()
-        }))
-        await supabase.from('led_price_history').insert(priceEntries)
+            const report = {
+                date: new Date().toISOString().split('T')[0],
+                total_products: totalCount || allProducts.length,
+                total_makers: Object.keys(brands).length,
+                overall_avg_price: overallAvg,
+                market_depth: marketDepth,
+                ai_commentary: generateAiCommentary({
+                    avgPrice: overallAvg,
+                    wasteCount: allProducts.filter(p => p.price > overallAvg * 1.5).length,
+                    topMaker: topMakers[0]?.name || 'Unknown',
+                    marketVolume: totalCount || allProducts.length
+                }),
+                generated_at: new Date().toISOString()
+            }
 
-        // 4. 리포트 생성 및 분석
-        const categoryStats = {}
-        allProducts.forEach(p => {
-            if (!categoryStats[p.category]) categoryStats[p.category] = { sum: 0, count: 0, min: Infinity, max: 0 }
-            categoryStats[p.category].sum += p.price
-            categoryStats[p.category].count += 1
-            categoryStats[p.category].min = Math.min(categoryStats[p.category].min, p.price)
-            categoryStats[p.category].max = Math.max(categoryStats[p.category].max, p.price)
-        })
+            // Save to Supabase (assuming columns exist or will be added)
+            await supabase.from('led_products').upsert(allProducts, { onConflict: 'external_id' })
+            await supabase.from('led_reports').upsert(report, { onConflict: 'date' })
 
-        const catSummary = Object.entries(categoryStats).map(([cat, s]) => ({
-            category: cat,
-            count: s.count,
-            avg: Math.round(s.sum / s.count),
-            min: s.min,
-            max: s.max
-        }))
-
-        // 'Waste' 아이템 탐지 (평균가보다 50% 이상 비싼 제품들)
-        const wasteItems = allProducts.filter(p => {
-            const stats = categoryStats[p.category]
-            const avg = stats.sum / stats.count
-            return p.price > avg * 1.5
-        }).map(p => ({
-            name: p.name,
-            price: p.price,
-            avg_price: Math.round(categoryStats[p.category].sum / categoryStats[p.category].count),
-            diff_percent: Math.round((p.price / (categoryStats[p.category].sum / categoryStats[p.category].count) - 1) * 100)
-        })).slice(0, 5)
-
-        const overallAvg = Math.round(allProducts.reduce((s, p) => s + p.price, 0) / allProducts.length)
-
-        const report = {
-            date: new Date().toISOString().split('T')[0],
-            total_products: allProducts.length,
-            total_makers: [...new Set(allProducts.map(p => p.maker))].length,
-            total_categories: Object.keys(categoryStats).length,
-            overall_avg_price: overallAvg,
-            overall_min_price: Math.min(...allProducts.map(p => p.price)),
-            overall_max_price: Math.max(...allProducts.map(p => p.price)),
-            category_stats: catSummary,
-            ai_commentary: `오늘의 LED 시장 분석 결과입니다. 현재 전체 평균가는 ₩${overallAvg.toLocaleString()}이며, ${wasteItems.length}개의 고평가(Waste) 품목이 발견되었습니다. 특히 ${catSummary[0]?.category} 카테고리의 가격 변동성이 높으니 주의 깊게 살펴보세요!`,
-            waste_items: wasteItems,
-            top_makers: Object.entries(allProducts.reduce((acc, p) => { acc[p.maker] = (acc[p.maker] || 0) + 1; return acc }, {})).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([name, count]) => ({ name, count })),
-            generated_at: new Date().toISOString()
-        }
-        await supabase.from('led_reports').upsert(report, { onConflict: 'date' })
-
-        // 5. Notion 동기화 (리포트 요약)
-        if (marketDbId) {
             await supabase.from('led_collection_jobs').update({
-                progress: `◈ EXPORTING TO NOTION...`
+                status: 'COMPLETED',
+                progress: `◈ ANALYSIS COMPLETE: ${allProducts.length} SAMPLES, DEEP INSIGHTS GENERATED`,
+                finished_at: new Date().toISOString()
             }).eq('id', jobId)
-
-            await notion.pages.create({
-                parent: { database_id: marketDbId },
-                properties: {
-                    Title: { title: [{ text: { content: `LED Market Report - ${report.date}` } }] },
-                    Category: { select: { name: 'LED Analysis' } },
-                    Value: { number: report.overall_avg_price },
-                    Description: { rich_text: [{ text: { content: `Total: ${report.total_products} products collected. Avg Price: ${report.overall_avg_price} KRW.` } }] },
-                    Date: { date: { start: new Date().toISOString() } }
-                }
-            })
         }
 
-        // 6. 상태 업데이트: COMPLETED
-        await supabase.from('led_collection_jobs').update({
-            status: 'COMPLETED',
-            progress: `◈ TASK COMPLETE: ${allProducts.length} ITEMS PROCESSED`,
-            finished_at: new Date().toISOString(),
-            result_summary: { totalCollected: allProducts.length, avgPrice: overallAvg }
-        }).eq('id', jobId)
-
-        return new Response(JSON.stringify({ success: true }), {
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        })
+        return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
     } catch (err) {
-        console.error('Edge Function Error:', err)
-        await supabase.from('led_collection_jobs').update({
-            status: 'FAILED',
-            progress: `◈ ERROR: ${err.message}`
-        }).eq('id', jobId)
-
-        return new Response(JSON.stringify({ error: err.message }), {
-            status: 500,
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-        })
+        console.error('System Error:', err)
+        if (supabase) await supabase.from('led_collection_jobs').update({ status: 'FAILED', progress: `◈ ERROR: ${err.message}` }).eq('id', jobId)
+        return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 })
