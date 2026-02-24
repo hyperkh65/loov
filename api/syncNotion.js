@@ -1,6 +1,6 @@
 import { Client } from '@notionhq/client';
 
-const notion = new Client({ auth: process.env.VITE_NOTION_TOKEN });
+const notion = new Client({ auth: process.env.NOTION_TOKEN });
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
@@ -9,8 +9,8 @@ export default async function handler(req, res) {
 
     try {
         const { type, data } = req.body;
-        const postsDbId = process.env.VITE_NOTION_POSTS_DB_ID;
-        const marketDbId = process.env.VITE_NOTION_MARKET_DB_ID;
+        const postsDbId = process.env.NOTION_POSTS_DB_ID;
+        const marketDbId = process.env.NOTION_MARKET_DB_ID;
 
         if (type === 'post') {
             await notion.pages.create({
