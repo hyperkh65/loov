@@ -163,8 +163,8 @@ async function forceScrape() {
         console.log(`◈ ANALYZING [${cat.name}]...`);
         let catCount = 0;
 
-        // Scrape up to 50 pages per category for ultra-deep data
-        for (let page = 1; page <= 50; page++) {
+        // Scrape up to 100 pages per category for ultra-deep data
+        for (let page = 1; page <= 100; page++) {
             process.stdout.write(`  Page ${page}... `);
             const url = `https://search.danawa.com/dsearch.php?query=${encodeURIComponent(cat.keyword)}&page=${page}&limit=40&sort=saveDESC`;
 
