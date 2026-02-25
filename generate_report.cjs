@@ -59,7 +59,9 @@ async function generateMarketReport() {
         // 2. Brand Portfolio (Products per Brand)
         const brandStats = {};
         products.forEach(p => {
-            const maker = p.maker || 'Unknown';
+            let maker = p.maker || 'Unknown';
+            if (maker.includes('[해외]') || maker === 'Unknown' || maker === '기타') return;
+
             if (!brandStats[maker]) {
                 brandStats[maker] = { count: 0, prices: [], certCount: 0, releaseYears: {} };
             }
