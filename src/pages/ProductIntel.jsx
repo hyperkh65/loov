@@ -557,10 +557,10 @@ export default function ProductIntel() {
                                             {i + 1}
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, position: 'relative' }}>
-                                            <div style={{ fontWeight: 800, fontSize: 13, color: '#fff', maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                            <div style={{ fontWeight: 900, fontSize: 14, color: '#fff', wordBreak: 'break-all', lineHeight: 1.2 }}>
                                                 #{i + 1} {maker.name}
                                             </div>
-                                            <div style={{ color: C, fontWeight: 900, fontSize: 12 }}>{maker.count}</div>
+                                            <div style={{ color: C, fontWeight: 900, fontSize: 13, marginLeft: 8 }}>{maker.count}</div>
                                         </div>
                                         <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 2, marginBottom: 12 }}>
                                             <div style={{ height: '100%', width: `${(maker.count / (report.top_makers[0]?.count || 1)) * 100}%`, background: C, borderRadius: 2 }} />
