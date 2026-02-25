@@ -24,6 +24,10 @@ export default function ProductIntel() {
     const [searchQuery, setSearchQuery] = useState('')
     const [sort, setSort] = useState('latest')
     const [certFilter, setCertFilter] = useState('all') // 'kc', 'ks', 'all'
+    const [dbCategories, setDbCategories] = useState([])
+    const [showAddCategory, setShowAddCategory] = useState(false)
+    const [newCatName, setNewCatName] = useState('')
+    const [newCatPass, setNewCatPass] = useState('')
 
     useEffect(() => {
         loadData()
@@ -49,9 +53,36 @@ export default function ProductIntel() {
         const { data: reports } = await supabase.from('led_reports').select('*').order('generated_at', { ascending: false }).limit(1)
         if (reports?.length) setReport(reports[0])
 
-        const { data: prods } = await supabase.from('led_products').select('*').order('collected_at', { ascending: false }).limit(2000)
+        const { data: prods } = await supabase.from('led_products').select('*').order('collected_at', { ascending: false }).limit(10000)
         if (prods) setProducts(prods)
+
+        const { data: cats, error: catError } = await supabase.from('led_categories').select('*').order('name')
+        if (catError) {
+            console.warn("◈ LED_CATEGORIES table missing or inaccessible. Run migration 002.");
+            setDbCategories([])
+        } else if (cats) {
+            setDbCategories(cats)
+        }
+
         setLoading(false)
+    }
+
+    async function handleAddCategory() {
+        if (newCatPass !== '1209') {
+            alert('◈ ACCESS DENIED: INVALID KEYCODE')
+            return
+        }
+        if (!newCatName.trim()) return
+
+        const { error } = await supabase.from('led_categories').insert([{ name: newCatName.trim(), keyword: newCatName.trim() }])
+        if (error) {
+            alert('! ERROR: ' + error.message)
+        } else {
+            setNewCatName('')
+            setNewCatPass('')
+            setShowAddCategory(false)
+            loadData()
+        }
     }
 
     const filteredProducts = products.filter(p => {
@@ -66,7 +97,11 @@ export default function ProductIntel() {
         const hasKS = certText.includes('ks')
         const matchesCert = certFilter === 'all' || (certFilter === 'kc' && hasKC) || (certFilter === 'ks' && hasKS)
 
-        return matchesCat && matchesMaker && matchesPrice && matchesSearch && matchesCert
+        const imgUrl = p.image_url || ''
+        const isDanawaLogo = imgUrl.includes('danawa.com/prod_img') && (imgUrl.includes('no_image') || imgUrl.includes('danawa_logo') || imgUrl.includes('img_danawa.com/new/no_image'))
+        const hasNoImage = !imgUrl || isDanawaLogo
+
+        return matchesCat && matchesMaker && matchesPrice && matchesSearch && matchesCert && !hasNoImage
     }).sort((a, b) => {
         if (sort === 'price_asc') return a.price - b.price
         if (sort === 'price_desc') return b.price - a.price
@@ -74,7 +109,9 @@ export default function ProductIntel() {
     })
 
     const makers = [...new Set(products.map(p => p.maker))].sort()
-    const categories = [...new Set(products.map(p => p.category))].sort()
+    const categories = dbCategories.length > 0
+        ? dbCategories.filter(c => c.is_active).map(c => c.name)
+        : [...new Set(products.map(p => p.category))].filter(Boolean).sort()
 
     const calculateMarketDepth = (items) => {
         if (!items || items.length === 0) return null;
@@ -120,17 +157,45 @@ export default function ProductIntel() {
         return { certification_stats, price_distribution };
     };
 
-    const marketDepth = report?.market_depth || calculateMarketDepth(products);
+    const marketDepth = report?.waste_items?.certification_stats
+        ? report.waste_items
+        : calculateMarketDepth(products);
+
+    const yearlyTrends = report?.waste_items?.yearly_trends || {};
 
     const selectStyle = {
-        background: BG,
+        background: `${BG}99`,
         border: `1px solid ${BORDER}`,
         color: '#fff',
         padding: '6px 12px',
-        borderRadius: 4,
+        borderRadius: 8,
         fontSize: 11,
-        outline: 'none'
+        outline: 'none',
+        backdropFilter: 'blur(5px)'
     }
+
+    const inputStyle = {
+        width: '100%',
+        background: '#000',
+        border: `1px solid ${C}30`,
+        color: '#fff',
+        padding: '12px',
+        borderRadius: 8,
+        fontSize: 13,
+        outline: 'none',
+        transition: 'border-color 0.2s',
+        boxSizing: 'border-box'
+    }
+
+    const sideSectionStyle = {
+        background: `${BG}40`,
+        padding: 16,
+        borderRadius: 12,
+        border: `1px solid ${BORDER}`,
+        backdropFilter: 'blur(10px)'
+    }
+
+    const sideTitleStyle = { fontSize: 10, fontWeight: 700, color: `${C}cc`, marginBottom: 12, letterSpacing: '0.1em' }
 
     return (
         <div style={{ minHeight: '100vh', background: BG, color: '#fff', paddingTop: 80, paddingBottom: 100, position: 'relative', overflow: 'hidden' }}>
@@ -182,12 +247,41 @@ export default function ProductIntel() {
                         </section>
 
                         <section style={sideSectionStyle}>
-                            <h3 style={sideTitleStyle}>◈ CATEGORY</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                <button onClick={() => setActiveCategory('all')} style={filterBtnStyle(activeCategory === 'all')}>ALL CATEGORIES</button>
-                                {categories.map(cat => (
-                                    <button key={cat} onClick={() => setActiveCategory(cat)} style={filterBtnStyle(activeCategory === cat)}>{cat}</button>
-                                ))}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                <h3 style={{ ...sideTitleStyle, marginBottom: 0 }}>◈ CATEGORY</h3>
+                                <button
+                                    onClick={() => setShowAddCategory(true)}
+                                    style={{
+                                        background: `linear-gradient(135deg, ${C}, ${C2})`,
+                                        border: 'none',
+                                        color: BG,
+                                        fontSize: 9,
+                                        fontWeight: 800,
+                                        padding: '4px 8px',
+                                        borderRadius: 6,
+                                        cursor: 'pointer',
+                                        boxShadow: `0 4px 12px ${C}30`
+                                    }}
+                                >+ NEW</button>
+                            </div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 400, overflowY: 'auto', paddingRight: 6, scrollbarWidth: 'thin' }}>
+                                <button onClick={() => setActiveCategory('all')} style={filterBtnStyle(activeCategory === 'all')}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                                        <span>ALL CATEGORIES</span>
+                                        <span style={{ fontSize: 9, background: `${C}20`, color: C, padding: '2px 6px', borderRadius: 4, fontWeight: 700 }}>{products.length}</span>
+                                    </div>
+                                </button>
+                                {categories.map(cat => {
+                                    const count = products.filter(p => p.category === cat).length;
+                                    return (
+                                        <button key={cat} onClick={() => setActiveCategory(cat)} style={filterBtnStyle(activeCategory === cat)}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
+                                                <span>{cat.toUpperCase()}</span>
+                                                <span style={{ opacity: 0.5, fontSize: 10, fontWeight: 800 }}>{count}</span>
+                                            </div>
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </section>
 
@@ -211,28 +305,31 @@ export default function ProductIntel() {
                             </div>
                         </section>
 
-                        {report?.waste_items?.length > 0 && (
-                            <section style={{
-                                marginBottom: 32,
-                                borderLeft: `2px solid ${C2}`,
-                                background: `linear-gradient(90deg, ${C2}08, transparent)`,
-                                padding: '16px 20px',
-                                borderRadius: '0 8px 8px 0'
-                            }}>
-                                <h3 style={{ ...sideTitleStyle, color: C2, marginBottom: 12 }}>◈ WASTE DETECTION</h3>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                    {report.waste_items.slice(0, 4).map((w, i) => (
-                                        <div key={i}>
-                                            <div style={{ fontSize: 11, fontWeight: 700, color: '#fafafa', marginBottom: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{w.name}</div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span style={{ fontSize: 13, color: C2, fontWeight: 900, fontFamily: 'monospace' }}>₩{w.price.toLocaleString()}</span>
-                                                <span style={{ fontSize: 9, background: `${C2}20`, padding: '2px 6px', borderRadius: 4, color: C2, fontWeight: 800 }}>+{w.diff_percent}% HIGH</span>
-                                            </div>
+                        {/* Brand Portfolio Ranking replaced Waste Detection */}
+                        <section style={{ ...sideSectionStyle, borderBottom: 'none' }}>
+                            <h3 style={sideTitleStyle}>◈ BRAND PORTFOLIO</h3>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                                {report?.top_makers?.slice(0, 10).map((maker, i) => (
+                                    <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                                            <span style={{ fontWeight: 700, color: '#fafafa' }}>{maker.name}</span>
+                                            <span style={{ color: C, fontWeight: 800, fontFamily: 'monospace' }}>{maker.count} SKU</span>
                                         </div>
-                                    ))}
-                                </div>
-                            </section>
-                        )}
+                                        <div style={{ height: 4, background: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>
+                                            <motion.div
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${(maker.count / (report.top_makers[0]?.count || 1)) * 100}%` }}
+                                                style={{ height: '100%', background: `linear-gradient(90deg, ${C}, ${C}30)`, borderRadius: 2 }}
+                                            />
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
+                                            <span>CERT: {maker.certRatio}%</span>
+                                            <span>AVG: ₩{Math.round(maker.avgPrice / 1000)}k</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
                     </aside>
 
                     {/* --- MAIN CONTENT --- */}
@@ -273,23 +370,35 @@ export default function ProductIntel() {
                                 </div>
                             </div>
 
-                            <div style={{ ...cardStyle }}>
-                                <h4 style={graphTitleStyle}>CATEGORY COMPOSITION</h4>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 20 }}>
-                                    {report?.category_stats && Object.entries(report.category_stats).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([cat, count], i) => {
-                                        const share = ((count / (report.total_products || 1)) * 100).toFixed(1);
-                                        return (
-                                            <div key={i}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 6 }}>
-                                                    <span style={{ fontWeight: 600 }}>{cat}</span>
-                                                    <span style={{ color: C2, fontWeight: 900 }}>{share}%</span>
+                            <div style={cardStyle}>
+                                <h4 style={graphTitleStyle}>ANNUAL RELEASE TRENDS</h4>
+                                <div style={{ height: 180, display: 'flex', alignItems: 'flex-end', gap: 10, marginTop: 20 }}>
+                                    {yearlyTrends && Object.entries(yearlyTrends)
+                                        .sort((a, b) => a[0] - b[0])
+                                        .slice(-8)
+                                        .map(([year, count], i) => {
+                                            const max = Math.max(...Object.values(yearlyTrends));
+                                            const height = (count / max) * 100;
+                                            return (
+                                                <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                                                    <div style={{ width: '100%', height: 140, display: 'flex', alignItems: 'flex-end' }}>
+                                                        <motion.div
+                                                            initial={{ height: 0 }}
+                                                            animate={{ height: `${height}%` }}
+                                                            style={{
+                                                                width: '100%',
+                                                                background: `linear-gradient(to top, ${C2}, ${C2}20)`,
+                                                                border: `1px solid ${C2}40`,
+                                                                borderRadius: '4px 4px 0 0',
+                                                                boxShadow: `0 0 15px ${C2}20`
+                                                            }}
+                                                        />
+                                                    </div>
+                                                    <div style={{ fontSize: 9, color: `${C2}cc`, fontFamily: 'monospace', fontWeight: 800 }}>{year}</div>
+                                                    <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>{count}</div>
                                                 </div>
-                                                <div style={{ height: 6, background: 'rgba(255,255,255,0.03)', borderRadius: 3, overflow: 'hidden' }}>
-                                                    <motion.div initial={{ width: 0 }} animate={{ width: `${share}%` }} style={{ height: '100%', background: `linear-gradient(90deg, ${C2}, ${C2}80)`, borderRadius: 3 }} />
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
+                                            );
+                                        })}
                                 </div>
                             </div>
 
@@ -398,6 +507,36 @@ export default function ProductIntel() {
                         </div>
                     </main>
                 </div>
+
+                {/* --- ADD CATEGORY MODAL --- */}
+                <AnimatePresence>
+                    {showAddCategory && (
+                        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                            <motion.div
+                                initial={{ scale: 0.9, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0.9, opacity: 0 }}
+                                style={{ ...cardStyle, width: 320, padding: 30, border: `1px solid ${C}40` }}
+                            >
+                                <h3 style={{ ...sideTitleStyle, color: C, textAlign: 'center' }}>◈ REGISTER CATEGORY</h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                                    <div>
+                                        <div style={{ fontSize: 10, color: `${C}80`, marginBottom: 6 }}>CATEGORY NAME</div>
+                                        <input type="text" value={newCatName} onChange={e => setNewCatName(e.target.value)} style={inputStyle} placeholder="e.g. LED 거실등" />
+                                    </div>
+                                    <div>
+                                        <div style={{ fontSize: 10, color: `${C}80`, marginBottom: 6 }}>SECURITY KEYCODE</div>
+                                        <input type="password" value={newCatPass} onChange={e => setNewCatPass(e.target.value)} style={inputStyle} placeholder="****" />
+                                    </div>
+                                    <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                                        <button onClick={() => setShowAddCategory(false)} style={{ ...filterBtnStyle(false), flex: 1 }}>CANCEL</button>
+                                        <button onClick={handleAddCategory} style={{ ...filterBtnStyle(true), flex: 1, background: C, color: BG }}>CONFIRM</button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
             </div>
         </div>
     )
