@@ -330,11 +330,11 @@ export default function ProductIntel() {
                         {/* Brand Portfolio Ranking replaced Waste Detection */}
                         <section style={{ ...sideSectionStyle, borderBottom: 'none' }}>
                             <h3 style={sideTitleStyle}>◈ BRAND PORTFOLIO</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                {report?.top_makers?.slice(0, 20).map((maker, i) => (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 600, overflowY: 'auto', paddingRight: 8, scrollbarWidth: 'thin' }}>
+                                {report?.top_makers?.slice(0, 100).map((maker, i) => (
                                     <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                                            <span style={{ fontWeight: 700, color: '#fafafa' }}>{maker.name}</span>
+                                            <span style={{ fontWeight: 700, color: '#fafafa' }}>#{i + 1} {maker.name}</span>
                                             <span style={{ color: C, fontWeight: 800, fontFamily: 'monospace' }}>{maker.count} SKU</span>
                                         </div>
                                         <div style={{ height: 4, background: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>

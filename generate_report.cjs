@@ -79,7 +79,7 @@ async function generateMarketReport() {
 
         const top_makers = Object.entries(brandStats)
             .sort((a, b) => b[1].count - a[1].count)
-            .slice(0, 50) // Show top 50 in stats
+            .slice(0, 100) // Capture top 100 for safety
             .map(([name, data]) => ({
                 name,
                 count: data.count,
