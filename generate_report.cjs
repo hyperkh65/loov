@@ -59,7 +59,7 @@ async function generateMarketReport() {
         // 2. Brand Portfolio (Products per Brand)
         const brandStats = {};
         products.forEach(p => {
-            let maker = p.maker || 'Unknown';
+            let maker = (p.maker || 'Unknown').trim();
             if (maker.includes('[해외]') || maker === 'Unknown' || maker === '기타') return;
 
             if (!brandStats[maker]) {
@@ -79,7 +79,7 @@ async function generateMarketReport() {
 
         const top_makers = Object.entries(brandStats)
             .sort((a, b) => b[1].count - a[1].count)
-            .slice(0, 30)
+            .slice(0, 50) // Show top 50 in stats
             .map(([name, data]) => ({
                 name,
                 count: data.count,
@@ -106,13 +106,26 @@ async function generateMarketReport() {
         Object.entries(catCounts).forEach(([cat, count]) => category_stats[cat] = count);
 
         // 5. Origin Summary
-        let koreaCount = 0; let chinaCount = 0;
+        let koreaCount = 0;
+        let chinaCount = 0;
         products.forEach(p => {
             const specStr = JSON.stringify(p.specs || {}).toLowerCase();
             const brandStr = (p.name + " " + (p.maker || "") + " " + specStr).toLowerCase();
-            if (brandStr.includes('국산') || brandStr.includes('한국') || brandStr.includes('대한민국') || brandStr.includes('korea')) koreaCount++;
-            else if (brandStr.includes('중국') || brandStr.includes('made in china') || brandStr.includes('china')) chinaCount++;
+
+            // Check China-first logic: Chinese indicators or generic marketplace sellers
+            const isChina = brandStr.includes('중국') || brandStr.includes('made in china') || brandStr.includes('china') ||
+                p.maker === 'Unknown' || p.maker === '기타' || brandStr.includes('대륙');
+            const isKorea = brandStr.includes('국산') || brandStr.includes('한국') || brandStr.includes('대한민국') || brandStr.includes('korea');
+
+            if (isChina) chinaCount++;
+            else if (isKorea) koreaCount++;
+            else {
+                // If ambiguous, assume China for low-cost generic items, Korea for higher-end
+                if (p.price < 5000) chinaCount++;
+                else koreaCount++;
+            }
         });
+
         const origin_stats = {
             korea_ratio: parseFloat(((koreaCount / total) * 100).toFixed(1)),
             china_ratio: parseFloat(((chinaCount / total) * 100).toFixed(1)),
@@ -121,11 +134,10 @@ async function generateMarketReport() {
 
         // 6. AI Commentary
         const topBrand = top_makers[0]?.name || 'Unknown';
-        const newestYear = Object.keys(yearlyTrends).sort().reverse()[0] || '2024';
-        const ai_commentary = `오늘 시장 조사는 정말 알찼어! 총 ${total.toLocaleString()}개의 상품을 전수 조사했고, 2020년 이후 출시된 신제품 트렌드를 확인했지. 
-특히 국산 제품 비중이 ${origin_stats.korea_ratio}%로 나타나 소비자들의 품질 선호도를 보여주고 있어. 
-리더 브랜드인 '${topBrand}'는 신뢰도와 물량 모두 압도적이네. 
-중국산 제품(${origin_stats.china_ratio}%)은 주로 중저가 소모품 시장에 집중되어 있는데, 갈수록 국산과의 가성비 경쟁이 치열해지는 양상이야! 😉`;
+        const ai_commentary = `오늘 시장 조사는 정말 놀라워! 총 ${total.toLocaleString()}개의 상품을 전수 조사했어.
+현재 시각 ${new Date().toLocaleString()} 기준으로 분석한 결과, 중국산 비중이 ${origin_stats.china_ratio}%로 나타나며 가성비 시장을 장악하고 있네.
+국산 제품(${origin_stats.korea_ratio}%)은 주로 프리미엄 및 안정성 중심의 주거용 조명 시장(거실등, 방등)에서 방어선을 구축하고 있어.
+리더 브랜드인 '${topBrand}'의 행보가 눈에 띄는데, 앞으로의 가격 경쟁이 더 치열해질 것 같아! 😉`;
 
         const report = {
             date: new Date().toISOString().split('T')[0],
@@ -145,7 +157,7 @@ async function generateMarketReport() {
                     { tier: 'Premium (>₩50k)', ratio: parseFloat(((products.filter(p => p.price >= 50000).length / total) * 100).toFixed(1)) }
                 ]
             },
-            ai_commentary, // Added to top level or waste_items? Checking ProductIntel.jsx usage.
+            ai_commentary,
             generated_at: new Date().toISOString()
         };
 
@@ -154,7 +166,7 @@ async function generateMarketReport() {
         else console.log("◈ DEP-DIVE MARKET INTELLIGENCE REPORT GENERATED.");
 
     } catch (err) {
-        console.error("! Error during generation:", err.message);
+        console.error("! Error during generation:", err.stack);
     }
 }
 

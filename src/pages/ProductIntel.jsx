@@ -331,7 +331,7 @@ export default function ProductIntel() {
                         <section style={{ ...sideSectionStyle, borderBottom: 'none' }}>
                             <h3 style={sideTitleStyle}>◈ BRAND PORTFOLIO</h3>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                                {report?.top_makers?.slice(0, 10).map((maker, i) => (
+                                {report?.top_makers?.slice(0, 20).map((maker, i) => (
                                     <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
                                             <span style={{ fontWeight: 700, color: '#fafafa' }}>{maker.name}</span>
@@ -429,15 +429,19 @@ export default function ProductIntel() {
                                 <div style={{ height: 160, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: 20, marginTop: 20, padding: '10px 20px' }}>
                                     {(() => {
                                         const koreaCount = products.filter(p => {
-                                            const s = (p.name + JSON.stringify(p.specs || {})).toLowerCase();
-                                            return s.includes('국산') || s.includes('한국') || s.includes('korea');
+                                            const s = (p.name + p.maker + JSON.stringify(p.specs || {})).toLowerCase();
+                                            const hasChina = s.includes('중국') || s.includes('china') || s.includes('made in china');
+                                            const hasKorea = s.includes('국산') || s.includes('한국') || s.includes('korea');
+                                            return hasKorea && !hasChina;
                                         }).length;
                                         const chinaCount = products.filter(p => {
-                                            const s = (p.name + JSON.stringify(p.specs || {})).toLowerCase();
-                                            return s.includes('중국') || s.includes('china');
+                                            const s = (p.name + p.maker + JSON.stringify(p.specs || {})).toLowerCase();
+                                            const hasChina = s.includes('중국') || s.includes('china') || s.includes('made in china');
+                                            const hasKorea = s.includes('국산') || s.includes('한국') || s.includes('korea');
+                                            return hasChina || (!hasKorea && (p.maker === 'Unknown' || p.maker === '기타' || p.price < 5000));
                                         }).length;
-                                        const total = koreaCount + chinaCount || 1;
-                                        const kRatio = Math.round((koreaCount / total) * 100);
+                                        const totalCount = koreaCount + chinaCount || 1;
+                                        const kRatio = Math.round((koreaCount / totalCount) * 100);
                                         const cRatio = 100 - kRatio;
 
                                         return (
