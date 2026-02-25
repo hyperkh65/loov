@@ -99,6 +99,19 @@ function parseProductsFromHTML(html, categoryName) {
             }
         }
 
+        // 7. Origin
+        let productOrigin = 'Unknown';
+        if (specs.raw) {
+            const originMatch = specs.raw.match(/(?:제조국|원산지):\s*([^/ ,]+)/i);
+            if (originMatch) productOrigin = originMatch[1].trim();
+        }
+        if (productOrigin === 'Unknown') {
+            const checkStr = (name + " " + maker + " " + (specs.raw || "")).toLowerCase();
+            if (checkStr.includes('국산') || checkStr.includes('한국') || checkStr.includes('대한민국') || checkStr.includes('korea')) productOrigin = '한국';
+            else if (checkStr.includes('중국') || checkStr.includes('china')) productOrigin = '중국';
+        }
+        specs.origin = productOrigin;
+
         // 6. ID
         const idMatch = item.match(/id=["'](?:productItem_categoryInfo_|min_price_)(\d+)["']/i)
             || item.match(/data-product-code=["'](\d+)["']/i)

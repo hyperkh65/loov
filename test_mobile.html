@@ -1,0 +1,138 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!doctype html>
+<html lang="ko">
+<head>
+	<meta charset="utf-8">
+	<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<title>다나와 에러페이지 - 다나와 모바일 가격비교를 넘어 가치비교로</title>
+	<meta name="keywords" content="가격비교, 추천상품, 다나와, 가격검색, 최저가, 모바일, 인터넷 쇼핑, 쇼핑몰, 신상품, 스팩비교, PC, 컴퓨터, 휴대폰, 노트북, 디카, 스포츠, 유아동, 유아, 완구, 영상 음향, 디지털, 가전, 골프, 생필품" />
+	<meta name="description" content="모바일 다나와는 온라인 전 제품에 대한 가격비교를 목표로 하는 사이트입니다. 오픈마켓부터 백화점, 기타 전문 소호몰까지 다양한 제품의 최저 가격 정보를 보여드리며, 다양한 각도의 상품 사진 및 상세설명, 그리고 소비자 의견을 한 눈에 살펴볼 수 있습니다." />
+	<link rel="shortcut icon" href="//img.danawa.com/new/danawa_main/v1/img/danawa_favicon.ico" />
+	<link rel="apple-touch-icon" href="//img.danawa.com/new/favicon/danawaM_favicon.png" />
+	<link rel="apple-touch-icon-precomposed" href="//img.danawa.com/new/favicon/danawaM_favicon.png" />
+	<link rel="stylesheet" type="text/css" href="//static.danawa.com/new/recss/m_bridge.css">
+
+	
+		
+		
+			
+			
+			
+		
+	
+	<!-- Global site tag (gtag.js) - Google Analytics -->
+	<script async src="https://www.googletagmanager.com/gtag/js?id=UA-37762359-1"></script>
+	<script>
+		window.dataLayer = window.dataLayer || [];
+		function gtag(){dataLayer.push(arguments);}
+		gtag('js', new Date());
+		gtag('config', 'UA-37762359-1');
+	</script>
+	
+	
+	<script async src="https://www.googletagmanager.com/gtag/js?id=G-6DK2F662CQ"></script>
+	<script>
+		gtag('config', 'G-6DK2F662CQ');
+	</script>
+	
+	<!-- Google Tag Manager -->
+	<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','GTM-MC25KFX');</script>
+	<!-- End Google Tag Manager -->
+	
+	<script type="text/javascript" src="//static.danawa.com/globaljs/static/jQuery_2.0.3.min.js"></script>
+	<script src='/js/global/mcommon-1.0.0-min.js'></script>	
+	<script src='/js/manager/commonManager.js'></script>
+</head>
+<body>
+	<!-- Google Tag Manager (noscript) -->
+	<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-MC25KFX" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+	<!-- End Google Tag Manager (noscript) -->
+	
+	<div id="wrap_area" data-pageinfo="error">
+         <!-- content_area -->
+         <section id="bridge_area">
+             <div class="service_chk_wrap">
+                 <div class="no_page">
+					<img src="//img.danawa.com/new/mdnw/v2/img/bg_view_error.gif" alt="DANAWA" class="img_svc_er">
+                    
+					
+			        
+			        	<p class="nop_txt1">페이지를 찾을 수 없습니다.</p>
+			    		<p class="nop_txt2">주소가 잘못 입력되었거나 변경 혹은 삭제되었습니다.</p>
+			        
+			        
+                     
+                    <div class="btm_btn_area">
+                         <a href="/index.html" onclick="prevButtonClickEvent(event)" class="btn_goprev">이전</a>
+                         <a href="/index.html" onClick="homeButtonClickEvent(event)" class="btn_gohome">다나와홈</a>
+                    </div>
+                 </div>
+                 
+                 <!-- 200128 앱캐시 기능 적용 : app_cache 추가 -->
+                 <div id="app_cache_area" class="app_cache" style="display:none;">
+                 	<p class="nop_txt2">서비스 이용 중  동일 문제가 반복되는 경우<br>앱 설정에서 <strong>"캐시삭제"</strong> 후 다시 이용해 주시기 바랍니다.</p>
+                 	<div class="btm_btn_area">
+                 		<a id="app_cache_button" href onClick="appCacheButtonClickEvent(event)" class="btn_goapp"> 
+                 			<span class="txt">앱 설정</span>
+                 		</a>
+                 	</div>
+                 </div>
+             </div>
+         </section>
+         <!--// content_area -->
+         <!-- footer_area -->
+         <footer id="footer_area">
+             <!-- footer_copyright -->
+             <div class="footer_copyright">
+                 <span class="foot_copy"><em>ⓒ</em> connectwave</span>
+             </div>
+             <!--// footer_copyright -->
+         </footer>
+         <!--// footer_area -->
+     </div>
+      
+    <!-- 앱 설정 버튼 노출-->
+	<script type="text/javascript">
+		var deviceInfo	= DANAWA_MOBILE_ENV_MANAGER.getDeviceInfo();
+		var isApp 		= deviceInfo.isApp;   
+		
+		// 앱일 경우에만 앱 설정 버튼 노출 
+		if(isApp){
+			$('#app_cache_area').show();
+		}  
+	</script>
+	
+	<!-- Naver -->
+	<script type="text/javascript">_TRK_CP = '에러페이지'</script>
+	<script type="text/javascript" src="//wcs.naver.net/wcslog.js"> </script> 
+	<script type="text/javascript"> 
+		if (!wcs_add) var wcs_add={};
+		wcs_add["wa"] = "s_851332dc09f";
+		if (!_nasa) var _nasa={};
+		wcs.inflow();
+		wcs_do(_nasa);
+	</script> 
+	<!-- \\ Naver --> 
+	
+	<!-- Insight -->
+	<script src="//static.danawa.com/globaljs/static/logger_Insight_WebAnalytics_mobile.js"></script>
+	<!-- //Insight -->
+</body>
+</html>

@@ -63,11 +63,13 @@ function parseProductsFromHTML(html: string) {
         let image = imgMatch ? imgMatch[1] : null
         if (image && image.startsWith('//')) image = 'https:' + image
 
+        const isDanawaLogo = image && (image.includes('no_image') || image.includes('danawa_logo') || image.includes('img_danawa.com/new/no_image'))
+
         const idMatch = item.match(/data-product-code="(\d+)"/i) || item.match(/pcode=(\d+)/i) || item.match(/id="productItem-(\d+)"/i)
         const productId = idMatch ? idMatch[1] : null
 
         // --- FILTER IRRELEVANT PRODUCTS ---
-        const forbiddenTerms = ['컴퓨터', 'PC', '노트북', '모니터', '데스크탑', 'OMEN', '35L', 'GT16', 'GeForce', 'Intel', 'AMD', 'RAM', 'SSD'];
+        const forbiddenTerms = ['컴퓨터', 'PC', '노트북', '모니터', '데스크탑', 'OMEN', '35L', 'GT16', 'GeForce', 'Intel', 'AMD', 'RAM', 'SSD', '메모리'];
         const lowerName = name?.toLowerCase() || '';
         const isIrrelevant = forbiddenTerms.some(term => lowerName.includes(term.toLowerCase()));
 
@@ -79,7 +81,7 @@ function parseProductsFromHTML(html: string) {
             if (firstWord.length > 1) maker = firstWord;
         }
 
-        if (name && price && price > 0 && !isIrrelevant) {
+        if (name && price && price > 0 && !isIrrelevant && !isDanawaLogo) {
             products.push({
                 external_id: productId || `dnw-${Math.random().toString(36).substr(2, 9)}`,
                 name,
@@ -140,24 +142,32 @@ serve(async (req) => {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
         }
 
-        const keywords = ['LED 센서등', 'LED 다운라이트', 'LED 방등', 'LED 거실등', 'LED T5', 'LED 전구', 'LED 투광기', 'LED 주방등', 'LED 욕실등']
-        for (const query of keywords) {
+        // Fetch categories from DB
+        const { data: dbCats } = await supabase.from('led_categories').select('*').eq('is_active', true)
+        const activeCategories = dbCats || []
+
+        for (const cat of activeCategories) {
+            const query = cat.keyword || cat.name
             console.log(`Analyzing: ${query}`)
             // Scrape multiple pages
-            for (let page = 1; page <= 10; page++) {
+            for (let page = 1; page <= 30; page++) {
                 console.log(`  Page ${page}...`)
-                const queryUrl = `${DANAWA_BASE}?query=${encodeURIComponent(query)}&page=${page}&limit=40`
+                const queryUrl = `${DANAWA_BASE}?query=${encodeURIComponent(query)}&page=${page}&limit=40&sort=saveDESC`
                 const resp = await fetch(queryUrl, { headers })
                 const buf = await resp.arrayBuffer()
                 const html = decoder.decode(buf)
 
-                if (totalCount === 0 && page === 1) totalCount = parseTotalCount(html)
+                if (totalCount === 0 && page === 1) totalCount += parseTotalCount(html)
                 const products = parseProductsFromHTML(html)
+                // Add the specific category to the product
+                products.forEach(p => p.category = cat.name)
                 allProducts.push(...products)
 
-                await new Promise(r => setTimeout(r, 600))
-                if (products.length < 10) break; // End of results
+                await new Promise(r => setTimeout(r, 500))
+                if (products.length < 5) break; // End of results
             }
+            // Update last scraped time
+            await supabase.from('led_categories').update({ last_scraped_at: new Date().toISOString() }).eq('id', cat.id)
         }
 
         if (allProducts.length > 0) {

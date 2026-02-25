@@ -23,7 +23,7 @@ export default function ProductIntel() {
     const [priceRange, setPriceRange] = useState([0, 200000])
     const [searchQuery, setSearchQuery] = useState('')
     const [sort, setSort] = useState('latest')
-    const [certFilter, setCertFilter] = useState('all') // 'kc', 'ks', 'all'
+    const [originFilter, setOriginFilter] = useState('all') // 'korea', 'china', 'all'
     const [dbCategories, setDbCategories] = useState([])
     const [showAddCategory, setShowAddCategory] = useState(false)
     const [newCatName, setNewCatName] = useState('')
@@ -53,8 +53,27 @@ export default function ProductIntel() {
         const { data: reports } = await supabase.from('led_reports').select('*').order('generated_at', { ascending: false }).limit(1)
         if (reports?.length) setReport(reports[0])
 
-        const { data: prods } = await supabase.from('led_products').select('*').order('collected_at', { ascending: false }).limit(10000)
-        if (prods) setProducts(prods)
+        let allProds = [];
+        let offset = 0;
+        const PAGE_SIZE = 1000;
+
+        try {
+            while (allProds.length < 10000) {
+                const { data, error } = await supabase
+                    .from('led_products')
+                    .select('*')
+                    .order('collected_at', { ascending: false })
+                    .range(offset, offset + PAGE_SIZE - 1);
+
+                if (error || !data || data.length === 0) break;
+                allProds = [...allProds, ...data];
+                if (data.length < PAGE_SIZE) break;
+                offset += PAGE_SIZE;
+            }
+            setProducts(allProds)
+        } catch (e) {
+            console.error("◈ Error fetching products:", e);
+        }
 
         const { data: cats, error: catError } = await supabase.from('led_categories').select('*').order('name')
         if (catError) {
@@ -92,16 +111,22 @@ export default function ProductIntel() {
         const q = searchQuery.toLowerCase()
         const matchesSearch = !q || p.name.toLowerCase().includes(q) || p.maker.toLowerCase().includes(q)
 
-        const certText = (p.name + (p.specs ? JSON.stringify(p.specs) : '')).toLowerCase()
-        const hasKC = certText.includes('kc')
-        const hasKS = certText.includes('ks')
-        const matchesCert = certFilter === 'all' || (certFilter === 'kc' && hasKC) || (certFilter === 'ks' && hasKS)
+        // Origin logic: Korea vs China vs Other
+        const specStr = JSON.stringify(p.specs || {}).toLowerCase();
+        const brandStr = (p.name + " " + p.maker + " " + specStr).toLowerCase();
+        const isKorea = brandStr.includes('국산') || brandStr.includes('한국') || brandStr.includes('대한민국') || brandStr.includes('korea');
+        const isChina = brandStr.includes('중국') || brandStr.includes('made in china') || brandStr.includes('china');
+        const pOrigin = isKorea ? 'korea' : (isChina ? 'china' : 'other');
+
+        let matchesOrigin = true;
+        if (originFilter === 'korea') matchesOrigin = pOrigin === 'korea';
+        else if (originFilter === 'china') matchesOrigin = pOrigin === 'china';
 
         const imgUrl = p.image_url || ''
         const isDanawaLogo = imgUrl.includes('danawa.com/prod_img') && (imgUrl.includes('no_image') || imgUrl.includes('danawa_logo') || imgUrl.includes('img_danawa.com/new/no_image'))
         const hasNoImage = !imgUrl || isDanawaLogo
 
-        return matchesCat && matchesMaker && matchesPrice && matchesSearch && matchesCert && !hasNoImage
+        return matchesCat && matchesMaker && matchesPrice && matchesSearch && matchesOrigin && !hasNoImage
     }).sort((a, b) => {
         if (sort === 'price_asc') return a.price - b.price
         if (sort === 'price_desc') return b.price - a.price
@@ -118,22 +143,17 @@ export default function ProductIntel() {
 
         const total = items.length;
 
-        // Certification
-        let kcCount = 0;
-        let ksCount = 0;
-        let bothCount = 0;
+        // Origin
+        let koreaCount = 0;
+        let chinaCount = 0;
         items.forEach(p => {
-            const text = (p.name + (p.specs ? JSON.stringify(p.specs) : '')).toLowerCase();
-            const hasKC = text.includes('kc');
-            const hasKS = text.includes('ks');
-            if (hasKC && hasKS) bothCount++;
-            else if (hasKC) kcCount++;
-            else if (hasKS) ksCount++;
+            const s = (p.name + p.maker + JSON.stringify(p.specs || {})).toLowerCase();
+            if (s.includes('국산') || s.includes('한국') || s.includes('korea')) koreaCount++;
+            else if (s.includes('중국') || s.includes('china')) chinaCount++;
         });
-
-        const certification_stats = {
-            kc_total_ratio: parseFloat((((kcCount + bothCount) / total) * 100).toFixed(1)),
-            ks_total_ratio: parseFloat((((ksCount + bothCount) / total) * 100).toFixed(1))
+        const origin_stats = {
+            korea_ratio: parseFloat(((koreaCount / total) * 100).toFixed(1)),
+            china_ratio: parseFloat(((chinaCount / total) * 100).toFixed(1))
         };
 
         // Price tiers
@@ -154,10 +174,10 @@ export default function ProductIntel() {
             ratio: parseFloat(((count / total) * 100).toFixed(1))
         }));
 
-        return { certification_stats, price_distribution };
+        return { origin_stats, price_distribution };
     };
 
-    const marketDepth = report?.waste_items?.certification_stats
+    const marketDepth = report?.waste_items?.origin_stats
         ? report.waste_items
         : calculateMarketDepth(products);
 
@@ -277,7 +297,9 @@ export default function ProductIntel() {
                                         <button key={cat} onClick={() => setActiveCategory(cat)} style={filterBtnStyle(activeCategory === cat)}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
                                                 <span>{cat.toUpperCase()}</span>
-                                                <span style={{ opacity: 0.5, fontSize: 10, fontWeight: 800 }}>{count}</span>
+                                                <span style={{ opacity: 0.5, fontSize: 10, fontWeight: 800 }}>
+                                                    {products.filter(p => (p.category || '').trim() === cat.trim()).length}
+                                                </span>
                                             </div>
                                         </button>
                                     );
@@ -286,11 +308,11 @@ export default function ProductIntel() {
                         </section>
 
                         <section style={sideSectionStyle}>
-                            <h3 style={sideTitleStyle}>◈ QUALITY ASSURANCE</h3>
+                            <h3 style={sideTitleStyle}>◈ PRODUCT ORIGIN</h3>
                             <div style={{ display: 'flex', gap: 8 }}>
-                                <button onClick={() => setCertFilter('all')} style={filterBtnStyle(certFilter === 'all')}>ALL</button>
-                                <button onClick={() => setCertFilter('kc')} style={filterBtnStyle(certFilter === 'kc')}>KC ONLY</button>
-                                <button onClick={() => setCertFilter('ks')} style={filterBtnStyle(certFilter === 'ks')}>KS ONLY</button>
+                                <button onClick={() => setOriginFilter('all')} style={filterBtnStyle(originFilter === 'all')}>ALL</button>
+                                <button onClick={() => setOriginFilter('korea')} style={filterBtnStyle(originFilter === 'korea')}>KOREA</button>
+                                <button onClick={() => setOriginFilter('china')} style={filterBtnStyle(originFilter === 'china')}>CHINA</button>
                             </div>
                         </section>
 
@@ -403,30 +425,44 @@ export default function ProductIntel() {
                             </div>
 
                             <div style={cardStyle}>
-                                <h4 style={graphTitleStyle}>CERTIFICATION LANDSCAPE</h4>
+                                <h4 style={graphTitleStyle}>MARKET ORIGIN RATIO</h4>
                                 <div style={{ height: 160, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: 20, marginTop: 20, padding: '10px 20px' }}>
-                                    {marketDepth?.certification_stats && (
-                                        <>
-                                            <div style={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
-                                                <motion.div
-                                                    initial={{ height: 0 }}
-                                                    animate={{ height: `${marketDepth.certification_stats.kc_total_ratio}%` }}
-                                                    style={{ background: `linear-gradient(to top, ${C}, ${C}40)`, borderRadius: '6px 6px 0 0', width: '100%', border: `1px solid ${C}50` }}
-                                                />
-                                                <div style={{ fontSize: 10, fontWeight: 800, color: C, marginTop: 12 }}>{marketDepth.certification_stats.kc_total_ratio}%</div>
-                                                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>KC COMPLIANT</div>
-                                            </div>
-                                            <div style={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
-                                                <motion.div
-                                                    initial={{ height: 0 }}
-                                                    animate={{ height: `${marketDepth.certification_stats.ks_total_ratio}%` }}
-                                                    style={{ background: `linear-gradient(to top, ${C2}, ${C2}40)`, borderRadius: '6px 6px 0 0', width: '100%', border: `1px solid ${C2}50` }}
-                                                />
-                                                <div style={{ fontSize: 10, fontWeight: 800, color: C2, marginTop: 12 }}>{marketDepth.certification_stats.ks_total_ratio}%</div>
-                                                <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>KS STANDARD</div>
-                                            </div>
-                                        </>
-                                    )}
+                                    {(() => {
+                                        const koreaCount = products.filter(p => {
+                                            const s = (p.name + JSON.stringify(p.specs || {})).toLowerCase();
+                                            return s.includes('국산') || s.includes('한국') || s.includes('korea');
+                                        }).length;
+                                        const chinaCount = products.filter(p => {
+                                            const s = (p.name + JSON.stringify(p.specs || {})).toLowerCase();
+                                            return s.includes('중국') || s.includes('china');
+                                        }).length;
+                                        const total = koreaCount + chinaCount || 1;
+                                        const kRatio = Math.round((koreaCount / total) * 100);
+                                        const cRatio = 100 - kRatio;
+
+                                        return (
+                                            <>
+                                                <div style={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
+                                                    <motion.div
+                                                        initial={{ height: 0 }}
+                                                        animate={{ height: `${kRatio}%` }}
+                                                        style={{ background: `linear-gradient(to top, #4efaa6, #4efaa640)`, borderRadius: '6px 6px 0 0', width: '100%', border: `1px solid #4efaa650` }}
+                                                    />
+                                                    <div style={{ fontSize: 10, fontWeight: 800, color: '#4efaa6', marginTop: 12 }}>{kRatio}%</div>
+                                                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>KOREAN MADE</div>
+                                                </div>
+                                                <div style={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
+                                                    <motion.div
+                                                        initial={{ height: 0 }}
+                                                        animate={{ height: `${cRatio}%` }}
+                                                        style={{ background: `linear-gradient(to top, #ff4e4e, #ff4e4e40)`, borderRadius: '6px 6px 0 0', width: '100%', border: `1px solid #ff4e4e50` }}
+                                                    />
+                                                    <div style={{ fontSize: 10, fontWeight: 800, color: '#ff4e4e', marginTop: 12 }}>{cRatio}%</div>
+                                                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>CHINA MADE</div>
+                                                </div>
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                             </div>
 
@@ -487,8 +523,17 @@ export default function ProductIntel() {
                                     <div style={{ padding: 16 }}>
                                         <h4 style={{ fontSize: 13, fontWeight: 700, margin: '0 0 10px 0', height: 40, overflow: 'hidden', color: '#fff' }}>{p.name}</h4>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 15, height: 20 }}>
-                                            {(p.name + JSON.stringify(p.specs || {})).toLowerCase().includes('kc') && <span style={badgeStyle('#4caf50')}>KC</span>}
-                                            {(p.name + JSON.stringify(p.specs || {})).toLowerCase().includes('ks') && <span style={badgeStyle('#2196f3')}>KS</span>}
+                                            {(() => {
+                                                const s = (p.name + JSON.stringify(p.specs || {})).toLowerCase();
+                                                const kr = s.includes('국산') || s.includes('한국') || s.includes('korea');
+                                                const cn = s.includes('중국') || s.includes('china');
+                                                return (
+                                                    <>
+                                                        {kr && <span style={badgeStyle('#4efaa6')}>KR</span>}
+                                                        {cn && <span style={badgeStyle('#ff4e4e')}>CN</span>}
+                                                    </>
+                                                );
+                                            })()}
                                             {p.specs?.wattage && <span style={badgeStyle(C)}>{p.specs.wattage}</span>}
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
