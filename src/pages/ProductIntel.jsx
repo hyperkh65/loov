@@ -327,31 +327,6 @@ export default function ProductIntel() {
                             </div>
                         </section>
 
-                        {/* Brand Portfolio Ranking replaced Waste Detection */}
-                        <section style={{ ...sideSectionStyle, borderBottom: 'none' }}>
-                            <h3 style={sideTitleStyle}>◈ BRAND PORTFOLIO</h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 600, overflowY: 'auto', paddingRight: 8, scrollbarWidth: 'thin' }}>
-                                {report?.top_makers?.slice(0, 100).map((maker, i) => (
-                                    <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                                            <span style={{ fontWeight: 700, color: '#fafafa' }}>#{i + 1} {maker.name}</span>
-                                            <span style={{ color: C, fontWeight: 800, fontFamily: 'monospace' }}>{maker.count} SKU</span>
-                                        </div>
-                                        <div style={{ height: 4, background: 'rgba(255,255,255,0.03)', borderRadius: 2 }}>
-                                            <motion.div
-                                                initial={{ width: 0 }}
-                                                animate={{ width: `${(maker.count / (report.top_makers[0]?.count || 1)) * 100}%` }}
-                                                style={{ height: '100%', background: `linear-gradient(90deg, ${C}, ${C}30)`, borderRadius: 2 }}
-                                            />
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 8, color: 'rgba(255,255,255,0.3)', marginTop: 2 }}>
-                                            <span>CERT: {maker.certRatio}%</span>
-                                            <span>AVG: ₩{Math.round(maker.avgPrice / 1000)}k</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        </section>
                     </aside>
 
                     {/* --- MAIN CONTENT --- */}
@@ -554,6 +529,50 @@ export default function ProductIntel() {
                                 </motion.div>
                             ))}
                         </div>
+
+                        {/* --- TOP 100 MARKET LEADERBOARD --- */}
+                        <section style={{ marginTop: 80, borderTop: `1px solid ${BORDER}`, paddingTop: 40 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 32 }}>
+                                <div>
+                                    <h2 style={{ fontSize: 24, fontWeight: 900, color: '#fff', margin: 0 }}>
+                                        MARKET <span style={{ color: C }}>LEADERBOARD</span> (TOP 100)
+                                    </h2>
+                                    <p style={{ fontSize: 11, color: `${C}80`, fontFamily: 'monospace', marginTop: 4 }}>TOP 100 VENDORS BY SKU PORTFOLIO DEPTH</p>
+                                </div>
+                                <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>
+                                    UPDATED: {new Date().toLocaleDateString()}
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16 }}>
+                                {report?.top_makers?.slice(0, 100).map((maker, i) => (
+                                    <motion.div
+                                        key={i}
+                                        initial={{ opacity: 0, scale: 0.95 }}
+                                        whileInView={{ opacity: 1, scale: 1 }}
+                                        viewport={{ once: true }}
+                                        style={{ ...cardStyle, padding: '16px 20px', border: `1px solid ${BORDER}`, position: 'relative', overflow: 'hidden' }}
+                                    >
+                                        <div style={{ position: 'absolute', top: -10, right: -10, fontSize: 40, fontWeight: 900, color: `${C}05`, fontFamily: 'monospace' }}>
+                                            {i + 1}
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12, position: 'relative' }}>
+                                            <div style={{ fontWeight: 800, fontSize: 13, color: '#fff', maxWidth: '70%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                #{i + 1} {maker.name}
+                                            </div>
+                                            <div style={{ color: C, fontWeight: 900, fontSize: 12 }}>{maker.count}</div>
+                                        </div>
+                                        <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 2, marginBottom: 12 }}>
+                                            <div style={{ height: '100%', width: `${(maker.count / (report.top_makers[0]?.count || 1)) * 100}%`, background: C, borderRadius: 2 }} />
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: 'rgba(255,255,255,0.4)' }}>
+                                            <span>AVG ₩{Math.round(maker.avgPrice / 1000)}k</span>
+                                            <span style={{ color: maker.certRatio > 50 ? '#4efaa6' : 'inherit' }}>CERT {maker.certRatio}%</span>
+                                        </div>
+                                    </motion.div>
+                                ))}
+                            </div>
+                        </section>
                     </main>
                 </div>
 
