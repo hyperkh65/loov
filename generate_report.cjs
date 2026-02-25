@@ -44,7 +44,6 @@ function extractCertifications(p) {
     return certs;
 }
 
-// Unified Origin Detection
 function detectOrigin(p) {
     const specStr = JSON.stringify(p.specs || {}).toLowerCase();
     const brandStr = (p.name + " " + (p.maker || "") + " " + specStr).toLowerCase();
@@ -52,11 +51,8 @@ function detectOrigin(p) {
     const hasChina = brandStr.includes('중국') || brandStr.includes('made in china') || brandStr.includes('china') || brandStr.includes('대륙');
     const hasKorea = brandStr.includes('국산') || brandStr.includes('한국') || brandStr.includes('대한민국') || brandStr.includes('korea');
 
-    // China-first logic: If China is mentioned at all, or it's a generic marketplace item
     if (hasChina) return 'China';
     if (hasKorea) return 'Korea';
-
-    // Defaults based on heuristics
     if (p.maker === 'Unknown' || p.maker === '기타' || p.price < 5000) return 'China';
     return 'Korea';
 }
@@ -71,11 +67,10 @@ async function generateMarketReport() {
 
         console.log(`   - Analyzing ${total} items...`);
 
-        // 1. Basic KPIs
         const prices = products.map(p => p.price).filter(p => p > 0);
         const overall_avg_price = Math.round(prices.reduce((a, b) => a + b, 0) / (prices.length || 1));
 
-        // 2. Brand Analysis
+        // 1. Brand Analysis
         const brandStats = {};
         products.forEach(p => {
             let maker = (p.maker || 'Unknown').trim();
@@ -102,6 +97,18 @@ async function generateMarketReport() {
                 chinaRatio: parseFloat(((data.chinaCount / data.count) * 100).toFixed(1))
             }));
 
+        // 2. Yearly Trends
+        const yearlyTrends = {};
+        products.forEach(p => {
+            const releaseDate = p.specs?.released_at;
+            if (releaseDate && releaseDate.includes('.')) {
+                const year = releaseDate.split('.')[0];
+                if (parseInt(year) > 2015 && parseInt(year) <= new Date().getFullYear()) {
+                    yearlyTrends[year] = (yearlyTrends[year] || 0) + 1;
+                }
+            }
+        });
+
         // 3. Category Analysis
         const catStats = {};
         products.forEach(p => {
@@ -113,8 +120,8 @@ async function generateMarketReport() {
 
         const sortedCats = Object.entries(catStats).sort((a, b) => b[1].count - a[1].count);
         const topCat = sortedCats[0];
-        const topCatName = topCat[0];
-        const topCatChinaRatio = ((topCat[1].chinaCount / topCat[1].count) * 100).toFixed(1);
+        const topCatName = topCat ? topCat[0] : 'Unknown';
+        const topCatChinaRatio = topCat ? ((topCat[1].chinaCount / topCat[1].count) * 100).toFixed(1) : '0';
 
         // 4. Origin Summary
         let koreaCount = 0;
@@ -148,10 +155,10 @@ async function generateMarketReport() {
         else sentiment = "국산 브랜드들이 품질과 신뢰를 바탕으로 견고한 점유율을 유지하고 있는 건강한 생태계입니다.";
 
         const ai_commentary = `◈ 전략 리포트 (분석 시각: ${new Date().toLocaleString()})
-현재 ${total.toLocaleString()}개 품목 전수 조사 결과, 시장의 심장부는 '${topCatName}' 분야로 총 ${topCat[1].count}개의 SKU가 경쟁 중입니다. 
+현재 ${total.toLocaleString()}개 품목 전수 조사 결과, 시장의 심장부는 '${topCatName}' 분야로 총 ${topCat ? topCat[1].count : 0}개의 SKU가 경쟁 중입니다. 
 가장 활발한 가격대는 '${dominantTier}'로 확인되며, 여기서의 승자가 전체 점유율을 결정짓고 있네요.
 
-특히 점유율 1위인 '${topBrand.name}' 브랜드는 평균 단가 ₩${topBrand.avgPrice.toLocaleString()} 선에서 ${topBrand.chinaRatio > 50 ? '중국 OEM' : '국산 제조'} 중심의 라인업을 구축하며 시장을 장착했습니다. 
+특히 점유율 1위인 '${topBrand.name}' 브랜드는 평균 단가 ₩${topBrand.avgPrice.toLocaleString()} 선에서 ${topBrand.chinaRatio > 50 ? '중국 OEM' : '국산 제조'} 중심의 라인업을 구축하며 시장을 장악했습니다. 
 전체 중국산 비중은 ${origin_stats.china_ratio}%로 집계되는데, 특히 '${topCatName}' 카테고리 내 중국산 비중이 ${topCatChinaRatio}%에 육박하며 국산 프리미엄 라인을 위협하는 양상입니다. 
 ${sentiment} 향후 '${secondBrand.name}'과의 핵심 가격 구간대 경쟁이 전체 시장 판도를 바꿀 분수령이 될 것으로 보입니다! 😉`;
 
@@ -166,6 +173,7 @@ ${sentiment} 향후 '${secondBrand.name}'과의 핵심 가격 구간대 경쟁�
             waste_items: {
                 origin_stats,
                 price_distribution: distribution,
+                yearly_trends: yearlyTrends,
                 market_insights: {
                     top_category: topCatName,
                     dominant_tier: dominantTier,
