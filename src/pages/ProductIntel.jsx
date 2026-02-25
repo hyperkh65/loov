@@ -174,14 +174,27 @@ export default function ProductIntel() {
             ratio: parseFloat(((count / total) * 100).toFixed(1))
         }));
 
-        return { origin_stats, price_distribution };
+        // Yearly Trends
+        const yearly_trends = {};
+        items.forEach(p => {
+            const releaseDate = p.specs?.released_at;
+            if (releaseDate && releaseDate.includes('.')) {
+                const year = releaseDate.split('.')[0];
+                if (parseInt(year) > 2015 && parseInt(year) <= new Date().getFullYear()) {
+                    yearly_trends[year] = (yearly_trends[year] || 0) + 1;
+                }
+            }
+        });
+
+        return { origin_stats, price_distribution, yearly_trends };
     };
 
     const marketDepth = report?.waste_items?.origin_stats
         ? report.waste_items
-        : calculateMarketDepth(products);
+        : calculateMarketDepth(filteredProducts);
 
-    const yearlyTrends = report?.waste_items?.yearly_trends || {};
+    const yearlyTrends = marketDepth?.yearly_trends || {};
+    const originStatsData = marketDepth?.origin_stats || { korea_ratio: 0, china_ratio: 0 };
 
     const selectStyle = {
         background: `${BG}99`,
@@ -427,8 +440,8 @@ export default function ProductIntel() {
                                 <h4 style={graphTitleStyle}>MARKET ORIGIN RATIO</h4>
                                 <div style={{ height: 160, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: 20, marginTop: 20, padding: '10px 20px' }}>
                                     {(() => {
-                                        const kRatio = report?.waste_items?.origin_stats?.korea_ratio || 0;
-                                        const cRatio = report?.waste_items?.origin_stats?.china_ratio || 0;
+                                        const kRatio = originStatsData.korea_ratio || 0;
+                                        const cRatio = originStatsData.china_ratio || 0;
 
                                         return (
                                             <>
