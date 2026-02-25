@@ -27,6 +27,7 @@ export default function Navbar() {
                     <NavLink to="/" current={currentPath}>Home</NavLink>
                     <NavLink to="/market" current={currentPath}>Market Spy</NavLink>
                     <NavLink to="/intel" current={currentPath}>Product Intel</NavLink>
+                    <NavLink to="/procurement" current={currentPath}>Procurement</NavLink>
                     <NavLink to="/board" current={currentPath}>Community</NavLink>
                 </div>
             </div>
