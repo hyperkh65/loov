@@ -427,21 +427,8 @@ export default function ProductIntel() {
                                 <h4 style={graphTitleStyle}>MARKET ORIGIN RATIO</h4>
                                 <div style={{ height: 160, display: 'flex', alignItems: 'flex-end', justifyContent: 'space-around', gap: 20, marginTop: 20, padding: '10px 20px' }}>
                                     {(() => {
-                                        const koreaCount = products.filter(p => {
-                                            const s = (p.name + p.maker + JSON.stringify(p.specs || {})).toLowerCase();
-                                            const hasChina = s.includes('중국') || s.includes('china') || s.includes('made in china');
-                                            const hasKorea = s.includes('국산') || s.includes('한국') || s.includes('korea');
-                                            return hasKorea && !hasChina;
-                                        }).length;
-                                        const chinaCount = products.filter(p => {
-                                            const s = (p.name + p.maker + JSON.stringify(p.specs || {})).toLowerCase();
-                                            const hasChina = s.includes('중국') || s.includes('china') || s.includes('made in china');
-                                            const hasKorea = s.includes('국산') || s.includes('한국') || s.includes('korea');
-                                            return hasChina || (!hasKorea && (p.maker === 'Unknown' || p.maker === '기타' || p.price < 5000));
-                                        }).length;
-                                        const totalCount = koreaCount + chinaCount || 1;
-                                        const kRatio = Math.round((koreaCount / totalCount) * 100);
-                                        const cRatio = 100 - kRatio;
+                                        const kRatio = report?.waste_items?.origin_stats?.korea_ratio || 0;
+                                        const cRatio = report?.waste_items?.origin_stats?.china_ratio || 0;
 
                                         return (
                                             <>
@@ -452,7 +439,7 @@ export default function ProductIntel() {
                                                         style={{ background: `linear-gradient(to top, #4efaa6, #4efaa640)`, borderRadius: '6px 6px 0 0', width: '100%', border: `1px solid #4efaa650` }}
                                                     />
                                                     <div style={{ fontSize: 10, fontWeight: 800, color: '#4efaa6', marginTop: 12 }}>{kRatio}%</div>
-                                                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>KOREAN MADE</div>
+                                                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>KOREA ORIGIN</div>
                                                 </div>
                                                 <div style={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%' }}>
                                                     <motion.div
@@ -461,7 +448,7 @@ export default function ProductIntel() {
                                                         style={{ background: `linear-gradient(to top, #ff4e4e, #ff4e4e40)`, borderRadius: '6px 6px 0 0', width: '100%', border: `1px solid #ff4e4e50` }}
                                                     />
                                                     <div style={{ fontSize: 10, fontWeight: 800, color: '#ff4e4e', marginTop: 12 }}>{cRatio}%</div>
-                                                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>CHINA MADE</div>
+                                                    <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>CHINA ORIGIN</div>
                                                 </div>
                                             </>
                                         );

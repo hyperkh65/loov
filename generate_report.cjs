@@ -44,118 +44,133 @@ function extractCertifications(p) {
     return certs;
 }
 
+// Unified Origin Detection
+function detectOrigin(p) {
+    const specStr = JSON.stringify(p.specs || {}).toLowerCase();
+    const brandStr = (p.name + " " + (p.maker || "") + " " + specStr).toLowerCase();
+
+    const hasChina = brandStr.includes('중국') || brandStr.includes('made in china') || brandStr.includes('china') || brandStr.includes('대륙');
+    const hasKorea = brandStr.includes('국산') || brandStr.includes('한국') || brandStr.includes('대한민국') || brandStr.includes('korea');
+
+    // China-first logic: If China is mentioned at all, or it's a generic marketplace item
+    if (hasChina) return 'China';
+    if (hasKorea) return 'Korea';
+
+    // Defaults based on heuristics
+    if (p.maker === 'Unknown' || p.maker === '기타' || p.price < 5000) return 'China';
+    return 'Korea';
+}
+
 async function generateMarketReport() {
     console.log("◈ GENERATING HYPER-DEEP MARKET INTELLIGENCE REPORT...");
 
     try {
         const products = await getAllProducts();
         const total = products.length;
+        if (total === 0) return;
+
         console.log(`   - Analyzing ${total} items...`);
 
         // 1. Basic KPIs
         const prices = products.map(p => p.price).filter(p => p > 0);
         const overall_avg_price = Math.round(prices.reduce((a, b) => a + b, 0) / (prices.length || 1));
 
-        // 2. Brand Portfolio (Products per Brand)
+        // 2. Brand Analysis
         const brandStats = {};
         products.forEach(p => {
             let maker = (p.maker || 'Unknown').trim();
             if (maker.includes('[해외]') || maker === 'Unknown' || maker === '기타') return;
 
             if (!brandStats[maker]) {
-                brandStats[maker] = { count: 0, prices: [], certCount: 0, releaseYears: {} };
+                brandStats[maker] = { count: 0, prices: [], certCount: 0, chinaCount: 0 };
             }
             brandStats[maker].count++;
             brandStats[maker].prices.push(p.price);
             if (extractCertifications(p).length > 0) brandStats[maker].certCount++;
-
-            // Extract release year from specs.released_at (format: YYYY.MM)
-            const releaseDate = p.specs?.released_at;
-            if (releaseDate && releaseDate.includes('.')) {
-                const year = releaseDate.split('.')[0];
-                brandStats[maker].releaseYears[year] = (brandStats[maker].releaseYears[year] || 0) + 1;
-            }
+            if (detectOrigin(p) === 'China') brandStats[maker].chinaCount++;
         });
 
         const top_makers = Object.entries(brandStats)
             .sort((a, b) => b[1].count - a[1].count)
-            .slice(0, 100) // Capture top 100 for safety
+            .slice(0, 100)
             .map(([name, data]) => ({
                 name,
                 count: data.count,
                 share: parseFloat(((data.count / total) * 100).toFixed(1)),
                 avgPrice: Math.round(data.prices.reduce((a, b) => a + b, 0) / data.count),
                 certRatio: parseFloat(((data.certCount / data.count) * 100).toFixed(1)),
-                releaseYears: data.releaseYears
+                chinaRatio: parseFloat(((data.chinaCount / data.count) * 100).toFixed(1))
             }));
 
-        // 3. Global Release Trends (Last 5 Years)
-        const yearlyTrends = {};
+        // 3. Category Analysis
+        const catStats = {};
         products.forEach(p => {
-            const releaseDate = p.specs?.released_at;
-            if (releaseDate && releaseDate.includes('.')) {
-                const year = releaseDate.split('.')[0];
-                yearlyTrends[year] = (yearlyTrends[year] || 0) + 1;
-            }
+            if (!catStats[p.category]) catStats[p.category] = { count: 0, prices: [], chinaCount: 0 };
+            catStats[p.category].count++;
+            catStats[p.category].prices.push(p.price);
+            if (detectOrigin(p) === 'China') catStats[p.category].chinaCount++;
         });
 
-        // 4. Category Composition
-        const catCounts = {};
-        products.forEach(p => catCounts[p.category] = (catCounts[p.category] || 0) + 1);
-        const category_stats = {};
-        Object.entries(catCounts).forEach(([cat, count]) => category_stats[cat] = count);
+        const sortedCats = Object.entries(catStats).sort((a, b) => b[1].count - a[1].count);
+        const topCat = sortedCats[0];
+        const topCatName = topCat[0];
+        const topCatChinaRatio = ((topCat[1].chinaCount / topCat[1].count) * 100).toFixed(1);
 
-        // 5. Origin Summary
+        // 4. Origin Summary
         let koreaCount = 0;
         let chinaCount = 0;
         products.forEach(p => {
-            const specStr = JSON.stringify(p.specs || {}).toLowerCase();
-            const brandStr = (p.name + " " + (p.maker || "") + " " + specStr).toLowerCase();
-
-            // Check China-first logic: Chinese indicators or generic marketplace sellers
-            const isChina = brandStr.includes('중국') || brandStr.includes('made in china') || brandStr.includes('china') ||
-                p.maker === 'Unknown' || p.maker === '기타' || brandStr.includes('대륙');
-            const isKorea = brandStr.includes('국산') || brandStr.includes('한국') || brandStr.includes('대한민국') || brandStr.includes('korea');
-
-            if (isChina) chinaCount++;
-            else if (isKorea) koreaCount++;
-            else {
-                // If ambiguous, assume China for low-cost generic items, Korea for higher-end
-                if (p.price < 5000) chinaCount++;
-                else koreaCount++;
-            }
+            if (detectOrigin(p) === 'China') chinaCount++;
+            else koreaCount++;
         });
 
         const origin_stats = {
             korea_ratio: parseFloat(((koreaCount / total) * 100).toFixed(1)),
-            china_ratio: parseFloat(((chinaCount / total) * 100).toFixed(1)),
-            other_ratio: parseFloat((((total - koreaCount - chinaCount) / total) * 100).toFixed(1))
+            china_ratio: parseFloat(((chinaCount / total) * 100).toFixed(1))
         };
 
-        // 6. AI Commentary
-        const topBrand = top_makers[0]?.name || 'Unknown';
-        const ai_commentary = `오늘 시장 조사는 정말 놀라워! 총 ${total.toLocaleString()}개의 상품을 전수 조사했어.
-현재 시각 ${new Date().toLocaleString()} 기준으로 분석한 결과, 중국산 비중이 ${origin_stats.china_ratio}%로 나타나며 가성비 시장을 장악하고 있네.
-국산 제품(${origin_stats.korea_ratio}%)은 주로 프리미엄 및 안정성 중심의 주거용 조명 시장(거실등, 방등)에서 방어선을 구축하고 있어.
-리더 브랜드인 '${topBrand}'의 행보가 눈에 띄는데, 앞으로의 가격 경쟁이 더 치열해질 것 같아! 😉`;
+        // 5. Price Distribution
+        const priceTiers = [
+            { label: 'Entry (<₩5k)', count: products.filter(p => p.price < 5000).length },
+            { label: 'Mid (₩5k-20k)', count: products.filter(p => p.price >= 5000 && p.price < 20000).length },
+            { label: 'High (₩20k-50k)', count: products.filter(p => p.price >= 20000 && p.price < 50000).length },
+            { label: 'Premium (>₩50k)', count: products.filter(p => p.price >= 50000).length }
+        ];
+        const distribution = priceTiers.map(t => ({ tier: t.label, ratio: parseFloat(((t.count / total) * 100).toFixed(1)) }));
+        const dominantTier = priceTiers.sort((a, b) => b.count - a.count)[0].label;
+
+        // 6. Strategic AI Commentary
+        const topBrand = top_makers[0] || { name: '시장 선도 브랜드', chinaRatio: 0, avgPrice: 0 };
+        const secondBrand = top_makers[1] || { name: '후발주자', chinaRatio: 0 };
+
+        let sentiment = "";
+        if (origin_stats.china_ratio > 30) sentiment = "중국산 저가 공세가 매우 거섭니다. 시장의 가격 주도권이 이미 상당 부분 넘어간 상태네요.";
+        else sentiment = "국산 브랜드들이 품질과 신뢰를 바탕으로 견고한 점유율을 유지하고 있는 건강한 생태계입니다.";
+
+        const ai_commentary = `◈ 전략 리포트 (분석 시각: ${new Date().toLocaleString()})
+현재 ${total.toLocaleString()}개 품목 전수 조사 결과, 시장의 심장부는 '${topCatName}' 분야로 총 ${topCat[1].count}개의 SKU가 경쟁 중입니다. 
+가장 활발한 가격대는 '${dominantTier}'로 확인되며, 여기서의 승자가 전체 점유율을 결정짓고 있네요.
+
+특히 점유율 1위인 '${topBrand.name}' 브랜드는 평균 단가 ₩${topBrand.avgPrice.toLocaleString()} 선에서 ${topBrand.chinaRatio > 50 ? '중국 OEM' : '국산 제조'} 중심의 라인업을 구축하며 시장을 장착했습니다. 
+전체 중국산 비중은 ${origin_stats.china_ratio}%로 집계되는데, 특히 '${topCatName}' 카테고리 내 중국산 비중이 ${topCatChinaRatio}%에 육박하며 국산 프리미엄 라인을 위협하는 양상입니다. 
+${sentiment} 향후 '${secondBrand.name}'과의 핵심 가격 구간대 경쟁이 전체 시장 판도를 바꿀 분수령이 될 것으로 보입니다! 😉`;
 
         const report = {
             date: new Date().toISOString().split('T')[0],
             total_products: total,
             total_makers: Object.keys(brandStats).length,
-            total_categories: Object.keys(catCounts).length,
+            total_categories: Object.keys(catStats).length,
             overall_avg_price,
-            category_stats,
+            category_stats: Object.fromEntries(Object.entries(catStats).map(([k, v]) => [k, v.count])),
             top_makers,
             waste_items: {
-                yearly_trends: yearlyTrends,
-                origin_stats: origin_stats,
-                price_distribution: [
-                    { tier: 'Entry (<₩5k)', ratio: parseFloat(((products.filter(p => p.price < 5000).length / total) * 100).toFixed(1)) },
-                    { tier: 'Mid (₩5k-20k)', ratio: parseFloat(((products.filter(p => p.price >= 5000 && p.price < 20000).length / total) * 100).toFixed(1)) },
-                    { tier: 'High (₩20k-50k)', ratio: parseFloat(((products.filter(p => p.price >= 20000 && p.price < 50000).length / total) * 100).toFixed(1)) },
-                    { tier: 'Premium (>₩50k)', ratio: parseFloat(((products.filter(p => p.price >= 50000).length / total) * 100).toFixed(1)) }
-                ]
+                origin_stats,
+                price_distribution: distribution,
+                market_insights: {
+                    top_category: topCatName,
+                    dominant_tier: dominantTier,
+                    sentiment
+                }
             },
             ai_commentary,
             generated_at: new Date().toISOString()
