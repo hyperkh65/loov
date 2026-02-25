@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Activity } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 const C = '#00e5ff'
@@ -13,6 +14,7 @@ export default function ProductIntel() {
     const [report, setReport] = useState(null)
     const [products, setProducts] = useState([])
     const [loading, setLoading] = useState(true)
+    const [showWasteModal, setShowWasteModal] = useState(false)
     const [collecting, setCollecting] = useState(false)
     const [progress, setProgress] = useState('')
     const [viewMode, setViewMode] = useState('grid') // 'grid' or 'list'
@@ -370,20 +372,95 @@ export default function ProductIntel() {
                     <main>
                         {/* AI Insights & KPI Row */}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, marginBottom: 32 }}>
-                            <div style={{ ...cardStyle, background: `linear-gradient(135deg, ${C}10 0%, transparent 100%)`, borderLeft: `4px solid ${C}` }}>
-                                <h4 style={{ fontSize: 10, fontFamily: 'monospace', color: C, marginBottom: 12 }}>◈ AI STRATEGIC SUMMARY</h4>
-                                <p style={{ fontSize: 16, lineHeight: 1.6, color: '#e0e0e0', margin: 0, fontStyle: 'italic' }}>
-                                    {report?.ai_commentary || "기다려봐! 지금 시장 데이터를 싹 다 분석해서 끝내주는 의견을 정리하고 있어... 😉"}
+                            <div style={{ ...cardStyle, background: `linear-gradient(135deg, ${C}12 0%, transparent 100%)`, borderLeft: `4px solid ${C}`, display: 'flex', flexDirection: 'column', gap: 15 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <h4 style={{ fontSize: 10, fontFamily: 'monospace', color: C, margin: 0 }}>◈ AI STRATEGIC PARTNER</h4>
+                                    <div style={{ fontSize: 9, color: `${C}60`, fontFamily: 'monospace' }}>MODEL: LOOVBASE-ALPHA</div>
+                                </div>
+                                <p style={{ fontSize: 15, lineHeight: 1.7, color: '#e0e0e0', margin: 0, fontWeight: 500 }}>
+                                    {report?.ai_commentary || "안녕! 지금 시장 데이터를 싹 다 훑어보고 있어. 요즘 조명 시장이 좀 요동치고 있거든... 조금만 기다려주면 끝내주는 인사이트를 가져다줄게! 😉"}
                                 </p>
+                                <div style={{ display: 'flex', gap: 10, marginTop: 'auto' }}>
+                                    <button style={{ fontSize: 9, padding: '4px 8px', border: `1px solid ${C}30`, borderRadius: 4, color: C, cursor: 'pointer', background: 'transparent' }}>분석 갱신 요청</button>
+                                    <button style={{ fontSize: 9, padding: '4px 8px', border: `1px solid ${C2}30`, borderRadius: 4, color: C2, cursor: 'pointer', background: 'transparent' }}>데이터 PDF 리포트</button>
+                                </div>
                             </div>
-                            <div style={cardStyle}>
-                                <div style={{ textAlign: 'center' }}>
-                                    <div style={{ fontSize: 10, fontFamily: 'monospace', color: `${C}60`, marginBottom: 8 }}>MARKET COVERAGE</div>
-                                    <div style={{ fontSize: 42, fontWeight: 900, color: '#fff' }}>{report?.total_products?.toLocaleString() || '0'}</div>
-                                    <div style={{ fontSize: 11, color: `${C}80`, marginTop: 4 }}>Unique Stock Keeping Units (SKUs)</div>
+                            <div style={{ ...cardStyle, background: `linear-gradient(135deg, ${C2}10 0%, transparent 100%)`, position: 'relative', overflow: 'hidden' }}>
+                                <div style={{ position: 'absolute', top: 10, right: 10 }}>
+                                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 10, repeat: Infinity, ease: 'linear' }}>
+                                        <Activity size={40} color={`${C2}20`} />
+                                    </motion.div>
+                                </div>
+                                <h4 style={{ fontSize: 10, fontFamily: 'monospace', color: C2, marginBottom: 12 }}>◈ MONTHLY WASTE INSIGHTS</h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                                        <span style={{ color: 'rgba(255,255,255,0.6)' }}>불량/허수 모델 감지</span>
+                                        <span style={{ color: C2, fontWeight: 900 }}>{report?.waste_items?.waste_count || 0} 건</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                                        <span style={{ color: 'rgba(255,255,255,0.6)' }}>비관련 데이터 필터링</span>
+                                        <span style={{ color: '#ff4e4e', fontWeight: 900 }}>{report?.waste_items?.detected_waste?.length || 0}+ 항목</span>
+                                    </div>
+                                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 8, fontStyle: 'italic', lineHeight: 1.5 }}>
+                                        "{report?.waste_items?.market_insights?.sentiment?.split('.')[0] || "이번 달에는 특히 거실등 카테고리에서 스펙보다 부풀려진 가격대가 많이 관찰되네. 고를 때 조심해야겠어!"}"
+                                    </div>
+                                </div>
+                                <div style={{ marginTop: 12 }}>
+                                    <button
+                                        onClick={() => setShowWasteModal(true)}
+                                        style={{ width: '100%', fontSize: 10, padding: '6px', border: `1px solid ${C2}40`, borderRadius: 4, color: C2, cursor: 'pointer', background: 'transparent' }}
+                                    >
+                                        검출 목록 상세 보기
+                                    </button>
                                 </div>
                             </div>
                         </div>
+
+                        {/* Waste Detailed Modal */}
+                        <AnimatePresence>
+                            {showWasteModal && (
+                                <div
+                                    style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(10px)' }}
+                                    onClick={() => setShowWasteModal(false)}
+                                >
+                                    <motion.div
+                                        initial={{ scale: 0.9, y: 20, opacity: 0 }}
+                                        animate={{ scale: 1, y: 0, opacity: 1 }}
+                                        exit={{ scale: 0.9, y: 20, opacity: 0 }}
+                                        style={{ width: '100%', maxWidth: 700, maxHeight: '80vh', background: '#0a0a10', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16, padding: 32, overflowY: 'auto', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
+                                        onClick={e => e.stopPropagation()}
+                                    >
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+                                            <div>
+                                                <h2 style={{ fontSize: 24, fontWeight: 800, color: C2, margin: 0, fontFamily: 'Outfit' }}>데이터 '허수' 탐지 로그</h2>
+                                                <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', marginTop: 4 }}>AI가 마켓 리포트에서 제외한 저품질/비관련 품목 리스트입니다.</p>
+                                            </div>
+                                            <button onClick={() => setShowWasteModal(false)} style={{ background: 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', cursor: 'pointer', padding: '8px 12px', borderRadius: 8 }}>✕</button>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                                            {report?.waste_items?.detected_waste?.map((item, idx) => (
+                                                <div key={idx} style={{ padding: '16px', background: 'rgba(255,255,255,0.02)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <div style={{ flex: 1 }}>
+                                                        <div style={{ fontSize: 13, fontWeight: 600, color: '#e0e0e0' }}>{item.name}</div>
+                                                        <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginTop: 4 }}>Maker: {item.maker} | ID: {item.id}</div>
+                                                    </div>
+                                                    <div style={{ textAlign: 'right', minWidth: 120 }}>
+                                                        <div style={{ fontSize: 10, color: C2, fontWeight: 700, background: `${C2}15`, padding: '2px 8px', borderRadius: 4, display: 'inline-block', marginBottom: 4 }}>{item.reason}</div>
+                                                        <div style={{ fontSize: 13, color: '#fff', fontWeight: 700 }}>₩{item.price?.toLocaleString()}</div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {(!report?.waste_summary?.detected_waste || report.waste_summary.detected_waste.length === 0) && (
+                                                <div style={{ padding: 64, textAlign: 'center', color: 'rgba(255,255,255,0.2)' }}>
+                                                    <Activity size={32} style={{ opacity: 0.2, marginBottom: 16 }} />
+                                                    <p>이번 분석 주기에는 허수 데이터가 발견되지 않았습니다.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                </div>
+                            )}
+                        </AnimatePresence>
 
                         {/* Visual Insights Section */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 24, marginBottom: 40 }}>

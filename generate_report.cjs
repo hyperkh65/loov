@@ -8,6 +8,7 @@ const supabase = createClient(
 
 async function getAllProducts() {
     let all = [];
+    let waste = [];
     let page = 0;
     const PAGE_SIZE = 1000;
 
@@ -20,20 +21,32 @@ async function getAllProducts() {
         if (error) throw error;
         if (!data || data.length === 0) break;
 
-        const forbidden = ['컴퓨터', 'PC', '노트북', '모니터', '데스크탑', 'OMEN', '35L', 'GT16', 'GeForce', 'Intel', 'AMD', 'RAM', 'SSD', 'Lenovo', '레노버', 'LEGION', 'HP', 'Alienware', 'Dell', 'GIGABYTE', 'MSI', 'ASUS'];
-        const filtered = data.filter(p => {
+        const forbidden = ['컴퓨터', 'PC', '노트북', '모니터', '데스크탑', 'OMEN', '35L', 'GT16', 'GeForce', 'Intel', 'AMD', 'RAM', 'SSD', 'Lenovo', '레노버', 'LEGION', 'HP', 'Alienware', 'Dell', 'GIGABYTE', 'MSI', 'ASUS', '키보드', '마우스'];
+
+        data.forEach(p => {
             const lowerName = p.name.toLowerCase();
             const isForbidden = forbidden.some(term => lowerName.includes(term.toLowerCase()));
             const isTechGiant = (lowerName.includes('삼성') || lowerName.includes('lg')) && p.price > 400000;
             const isTooExpensive = p.price > 2000000;
-            return !isForbidden && !isTooExpensive && !isTechGiant;
+            const isSuspiciouslyCheap = p.price < 500 && p.name.includes('LED');
+
+            if (isForbidden || isTooExpensive || isTechGiant || isSuspiciouslyCheap) {
+                let reason = "기타 필터링";
+                if (isForbidden) reason = "비관련 키워드 (IT/PC)";
+                else if (isTooExpensive) reason = "가격 이상치 (200만+ )";
+                else if (isTechGiant) reason = "비관련 대형가전 (TV/냉장고)";
+                else if (isSuspiciouslyCheap) reason = "허수/미끼 상품";
+
+                waste.push({ ...p, waste_reason: reason });
+            } else {
+                all.push(p);
+            }
         });
 
-        all.push(...filtered);
         if (data.length < PAGE_SIZE) break;
         page++;
     }
-    return all;
+    return { all, waste };
 }
 
 function extractCertifications(p) {
@@ -61,7 +74,7 @@ async function generateMarketReport() {
     console.log("◈ GENERATING HYPER-DEEP MARKET INTELLIGENCE REPORT...");
 
     try {
-        const products = await getAllProducts();
+        const { all: products, waste: wasteItems } = await getAllProducts();
         const total = products.length;
         if (total === 0) return;
 
@@ -178,7 +191,15 @@ ${sentiment} 향후 '${secondBrand.name}'과의 핵심 가격 구간대 경쟁�
                     top_category: topCatName,
                     dominant_tier: dominantTier,
                     sentiment
-                }
+                },
+                detected_waste: wasteItems.slice(0, 50).map(w => ({
+                    id: w.external_id,
+                    name: w.name,
+                    price: w.price,
+                    reason: w.waste_reason,
+                    maker: w.maker
+                })),
+                waste_count: wasteItems.length
             },
             ai_commentary,
             generated_at: new Date().toISOString()
