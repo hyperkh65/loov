@@ -20,7 +20,16 @@ const newCategories = [
     { name: 'LED 주방등', keyword: 'LED 주방등' },
     { name: 'LED 욕실등', keyword: 'LED 욕실등' },
     { name: 'LED 현관등', keyword: 'LED 현관등' },
-    { name: 'LED 센서등', keyword: 'LED 센서등' }
+    { name: 'LED 센서등', keyword: 'LED 센서등' },
+    { name: 'LED 가로등', keyword: 'LED 가로등' },
+    { name: 'LED 보안등', keyword: 'LED 보안등' },
+    { name: 'LED 터널등', keyword: 'LED 터널등' },
+    { name: 'LED 투광등', keyword: 'LED 투광등' },
+    { name: 'LED 공장등', keyword: 'LED 공장등' },
+    { name: 'LED 고천장등', keyword: 'LED 고천장등' },
+    { name: 'LED 면조명', keyword: 'LED 면조명' },
+    { name: 'LED 십자등', keyword: 'LED 십자등' },
+    { name: 'LED 일자등', keyword: 'LED 일자등' }
 ];
 
 async function addCategories() {

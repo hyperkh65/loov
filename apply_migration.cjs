@@ -150,7 +150,13 @@ async function applyMigration() {
 
     for (const sql of statements) {
         const preview = sql.trim().slice(0, 60).replace(/\n/g, ' ');
-        const { error } = await supabase.rpc('pg_query', { query: sql }).catch(() => ({ error: { message: 'rpc_unavailable' } }));
+        let response;
+        try {
+            response = await supabase.rpc('pg_query', { query: sql });
+        } catch (e) {
+            response = { error: { message: 'rpc_unavailable' } };
+        }
+        const { error } = response;
 
         if (error) {
             // Try direct table insert as a health check for CREATE TABLE statements

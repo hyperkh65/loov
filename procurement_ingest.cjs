@@ -5,7 +5,7 @@ require('dotenv').config({ path: '.env.local' });
 // For now we use ANON key and assume RLS is set to public-write in the migration.
 const supabase = createClient(
     process.env.VITE_SUPABASE_URL,
-    process.env.VITE_SUPABASE_ANON_KEY
+    process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_ANON_KEY
 );
 
 /**

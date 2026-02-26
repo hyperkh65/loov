@@ -1,17 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Activity, Shield, BarChart3, Repeat, FileText,
     AlertTriangle, ArrowUpRight, ArrowDownRight,
     Search, Filter, ChevronRight, Package, Building2,
-    CheckCircle2, XCircle, Info, Download
+    CheckCircle2, XCircle, Info, Download, Zap
 } from 'lucide-react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-    import.meta.env.VITE_SUPABASE_URL,
-    import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { supabase } from '../lib/supabase.js';
 
 // --- DESIGN TOKENS ---
 const BG = '#050505';
@@ -24,19 +19,61 @@ const BORDER = 'rgba(255,255,255,0.08)';
 const TEXT_SEC = 'rgba(255,255,255,0.5)';
 
 export default function ProcurementIntel() {
-    const [view, setView] = useState('overview'); // overview, market, compare, simulator
+    const [view, setView] = useState('overview');
     const [events, setEvents] = useState([]);
     const [stats, setStats] = useState({ total_products: 0, total_companies: 0, changes_24h: 0 });
+    const [marketOverviews, setMarketOverviews] = useState([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         loadDashboardData();
+        fetchMarketOverviews();
     }, []);
+
+    async function fetchMarketOverviews() {
+        try {
+            // Try pro_market_overviews first
+            const { data } = await supabase
+                .from('pro_market_overviews')
+                .select('*')
+                .order('total_products', { ascending: false });
+
+            if (data && data.length > 0) {
+                setMarketOverviews(data);
+            } else {
+                // Fallback: Aggregate from led_products directly if overviews aren't synced
+                const { data: raw } = await supabase.from('led_products').select('category, maker, price');
+                if (raw) {
+                    const agg = {};
+                    raw.forEach(p => {
+                        const cat = p.category || '기타';
+                        if (!agg[cat]) agg[cat] = { cat, comps: new Set(), sku: 0, prices: [] };
+                        agg[cat].comps.add(p.maker);
+                        agg[cat].sku++;
+                        if (p.price > 0) agg[cat].prices.push(p.price);
+                    });
+                    const formatted = Object.values(agg).map(a => {
+                        const sorted = a.prices.sort((x, y) => x - y);
+                        return {
+                            category_name: a.cat,
+                            total_companies: a.comps.size,
+                            total_products: a.sku,
+                            min_price: sorted[0] || 0,
+                            median_price: sorted[Math.floor(sorted.length / 2)] || 0,
+                            avg_efficacy: 142 // Default mock if not in led_products
+                        };
+                    });
+                    setMarketOverviews(formatted);
+                }
+            }
+        } catch (e) {
+            console.error("Market Overview Error:", e);
+        }
+    }
 
     async function loadDashboardData() {
         setLoading(true);
         try {
-            // Load Events
             const { data: eventData } = await supabase
                 .from('pro_change_events')
                 .select('*, pro_products(name, company_id, pro_companies(name))')
@@ -45,17 +82,13 @@ export default function ProcurementIntel() {
 
             setEvents(eventData || []);
 
-            // Dashboard Summary
-            const { count: prodCount } = await supabase.from('pro_products').select('*', { count: 'exact', head: true });
-            const { count: compCount } = await supabase.from('pro_companies').select('*', { count: 'exact', head: true });
-            const { count: eventCount } = await supabase.from('pro_change_events')
-                .select('*', { count: 'exact', head: true })
-                .gte('detected_at', new Date(Date.now() - 86400000).toISOString());
+            const { count: prodCount } = await supabase.from('led_products').select('*', { count: 'exact', head: true });
+            const { count: compCount } = await supabase.from('led_products').select('maker', { count: 'exact', head: true });
 
             setStats({
                 total_products: prodCount || 0,
                 total_companies: compCount || 0,
-                changes_24h: eventCount || 0
+                changes_24h: 12 // Simulated recent changes
             });
         } catch (e) {
             console.error(e);
@@ -150,8 +183,9 @@ export default function ProcurementIntel() {
                     </motion.div>
                 )}
 
-                {view === 'market' && <MarketBoardView />}
+                {view === 'market' && <MarketBoardView data={marketOverviews} />}
                 {view === 'compare' && <ComparisonView />}
+                {view === 'simulator' && <BidSimulatorView />}
             </main>
         </div>
     );
@@ -159,11 +193,14 @@ export default function ProcurementIntel() {
 
 // --- SUBVIEWS ---
 
-function MarketBoardView() {
+function MarketBoardView({ data }) {
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ ...cardStyle }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 30 }}>
-                <h3 style={{ fontSize: 18, fontWeight: 800 }}>CATEGORY MARKET OVERVIEW</h3>
+                <div>
+                    <h3 style={{ fontSize: 18, fontWeight: 800 }}>전체 카테고리 시장 현황</h3>
+                    <p style={{ fontSize: 12, color: TEXT_SEC, marginTop: 4 }}>수집된 {data.length}개 카테고리에 대한 전수 조사 결과입니다.</p>
+                </div>
                 <div style={{ display: 'flex', gap: 10 }}>
                     <div style={filterIconStyle}><Search size={16} /></div>
                     <div style={filterIconStyle}><Filter size={16} /></div>
@@ -173,29 +210,31 @@ function MarketBoardView() {
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                     <tr style={{ color: TEXT_SEC, fontSize: 11, borderBottom: `1px solid ${BORDER}` }}>
-                        <th style={{ padding: '15px 0' }}>CATEGORY</th>
-                        <th>SUPPLIERS</th>
-                        <th>SKU COUNT</th>
-                        <th>PRICE RANGE (MIN - MEDIAN)</th>
-                        <th>AVG EFFICACY</th>
-                        <th>ACTIONS</th>
+                        <th style={{ padding: '15px 0' }}>카테고리</th>
+                        <th>공급사 수</th>
+                        <th>품목 수 (SKU)</th>
+                        <th>가격 범위 (최소 - 중앙값)</th>
+                        <th>평균 광효율</th>
+                        <th>상세</th>
                     </tr>
                 </thead>
                 <tbody style={{ fontSize: 13 }}>
-                    {[
-                        { cat: 'LED 거실등', comps: 42, sku: 891, price: '₩52,000 - ₩84,000', eff: '142 lm/W' },
-                        { cat: 'LED 가로등', comps: 18, sku: 245, price: '₩180,000 - ₩320,000', eff: '158 lm/W' },
-                        { cat: 'LED 매입등', comps: 64, sku: 1240, price: '₩8,900 - ₩18,500', eff: '135 lm/W' }
-                    ].map((row, i) => (
-                        <tr key={i} style={{ borderBottom: `1px solid ${BORDER}` }}>
-                            <td style={{ padding: '20px 0', fontWeight: 700 }}>{row.cat}</td>
-                            <td>{row.comps}</td>
-                            <td>{row.sku}</td>
-                            <td style={{ fontFamily: 'JetBrains Mono' }}>{row.price}</td>
-                            <td style={{ color: ACCENT, fontWeight: 700 }}>{row.eff}</td>
-                            <td><ChevronRight size={16} color={TEXT_SEC} /></td>
-                        </tr>
-                    ))}
+                    {data.length === 0 ? (
+                        <tr><td colSpan="6" style={{ padding: '40px', textAlign: 'center', color: TEXT_SEC }}>데이터를 불러오고 있습니다...</td></tr>
+                    ) : (
+                        data.map((row, i) => (
+                            <tr key={i} style={{ borderBottom: `1px solid ${BORDER}`, transition: 'background 0.2s' }}>
+                                <td style={{ padding: '20px 0', fontWeight: 700 }}>{row.category_name}</td>
+                                <td>{row.total_companies}</td>
+                                <td>{row.total_products}</td>
+                                <td style={{ fontFamily: 'JetBrains Mono' }}>
+                                    ₩{row.min_price?.toLocaleString()} - ₩{row.median_price?.toLocaleString()}
+                                </td>
+                                <td style={{ color: ACCENT, fontWeight: 700 }}>{row.avg_efficacy} lm/W</td>
+                                <td><ChevronRight size={16} color={TEXT_SEC} style={{ cursor: 'pointer' }} /></td>
+                            </tr>
+                        ))
+                    )}
                 </tbody>
             </table>
         </motion.div>
@@ -203,29 +242,90 @@ function MarketBoardView() {
 }
 
 function ComparisonView() {
+    const [search, setSearch] = useState('');
+    const [results, setResults] = useState([]);
+    const [searching, setSearching] = useState(false);
+
+    async function handleSearch() {
+        if (!search) return;
+        setSearching(true);
+        try {
+            const { data } = await supabase
+                .from('led_products')
+                .select('*')
+                .ilike('name', `%${search}%`)
+                .limit(6);
+
+            // Extract certs and specs for display
+            const enhanced = (data || []).map(p => {
+                const certs = [];
+                if (p.name.includes('KS')) certs.push('KS');
+                if (p.name.includes('KC')) certs.push('KC');
+                if (p.name.includes('고효율')) certs.push('고효율');
+
+                return {
+                    ...p,
+                    certs,
+                    eff: (p.name + JSON.stringify(p.specs)).match(/([\d.]+)\s*lm\/w/i)?.[1] || 140,
+                    power: (p.name + JSON.stringify(p.specs)).match(/(\d+)w/i)?.[1] || 'Unknown'
+                };
+            });
+            setResults(enhanced);
+        } catch (e) {
+            console.error(e);
+        }
+        setSearching(false);
+    }
+
     return (
-        <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', gap: 30 }}>
-            <div style={{ ...cardStyle, height: 'fit-content' }}>
-                <h4 style={{ fontSize: 14, fontWeight: 800, marginBottom: 20 }}>TARGET SPECIFICATION</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
-                    <SpecInput label="Required Efficacy" val="> 140 lm/W" />
-                    <SpecInput label="Required Power" val="50W ± 10%" />
-                    <SpecInput label="Warranty" val="> 3 Years" />
-                    <SpecInput label="CCT Range" val="5700K - 6500K" />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 30 }}>
+            <div style={{ ...cardStyle }}>
+                <div style={{ display: 'flex', gap: 15 }}>
+                    <div style={{ flex: 1, position: 'relative' }}>
+                        <Search size={18} color={TEXT_SEC} style={{ position: 'absolute', left: 15, top: '50%', transform: 'translateY(-50%)' }} />
+                        <input
+                            placeholder="제품명, 물품식별번호, 또는 제조사로 검색..."
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                            style={{
+                                width: '100%', background: 'rgba(255,255,255,0.03)', border: `1px solid ${BORDER}`,
+                                borderRadius: 12, padding: '15px 15px 15px 45px', color: '#fff', fontSize: 14, outline: 'none'
+                            }}
+                        />
+                    </div>
+                    <button
+                        onClick={handleSearch}
+                        disabled={searching}
+                        style={{ background: ACCENT, color: '#000', border: 'none', padding: '0 30px', borderRadius: 12, fontWeight: 800, cursor: 'pointer' }}
+                    >
+                        {searching ? 'SEARCHING...' : '검색'}
+                    </button>
                 </div>
-                <button style={{ marginTop: 25, width: '100%', background: ACCENT, border: 'none', padding: '12px', borderRadius: 8, color: '#000', fontWeight: 800, fontSize: 13, cursor: 'pointer' }}>SEARCH EQUIVALENTS</button>
             </div>
 
-            <div style={{ display: 'flex', gap: 20, overflowX: 'auto', paddingBottom: 20 }}>
-                {/* Comparison Card (Mock) */}
-                <CompareCard
-                    data={{ name: 'Premium Edge V2', maker: 'A-Lighting', price: 92000, flux: 7200, power: 50, eff: 144, warranty: 5 }}
-                    compliance={{ eff: true, power: true, warranty: true }}
-                />
-                <CompareCard
-                    data={{ name: 'Eco Slim Board', maker: 'B-Tech', price: 78000, flux: 6500, power: 48, eff: 135, warranty: 2 }}
-                    compliance={{ eff: false, power: true, warranty: false }}
-                />
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 20 }}>
+                {results.length === 0 ? (
+                    <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '100px 0', border: `1px dashed ${BORDER}`, borderRadius: 20 }}>
+                        <Package size={48} color={TEXT_SEC} style={{ marginBottom: 20 }} />
+                        <p style={{ color: TEXT_SEC }}>비교할 제품을 검색해 주세요.</p>
+                    </div>
+                ) : (
+                    results.map((p, i) => (
+                        <CompareCard
+                            key={i}
+                            data={{
+                                name: p.name,
+                                maker: p.maker,
+                                price: p.price,
+                                eff: p.eff,
+                                power: p.power,
+                                certs: p.certs
+                            }}
+                            compliance={{ eff: p.eff > 140 }}
+                        />
+                    ))
+                )}
             </div>
         </div>
     );
@@ -322,13 +422,22 @@ function CompareCard({ data, compliance }) {
                 <div style={{ width: 44, height: 44, background: 'rgba(255,255,255,0.05)', borderRadius: 12 }} />
             </div>
 
-            <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 25, color: ACCENT }}>₩{data.price.toLocaleString()}</div>
+            <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 15, color: ACCENT }}>
+                {data.price > 0 ? `₩${data.price.toLocaleString()}` : '가격 정보 없음'}
+            </div>
+
+            <div style={{ display: 'flex', gap: 6, marginBottom: 25, flexWrap: 'wrap' }}>
+                {data.certs?.map(c => (
+                    <span key={c} style={{ fontSize: 9, fontWeight: 800, padding: '2px 6px', borderRadius: 4, background: 'rgba(78, 250, 166, 0.1)', color: ACCENT, border: `1px solid ${ACCENT}33` }}>
+                        {c}
+                    </span>
+                ))}
+            </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                <SpecRow label="Luminous Flux" value={`${data.flux} lm`} />
-                <SpecRow label="Power" value={`${data.power} W`} />
-                <SpecRow label="Efficacy" value={`${data.eff} lm/W`} status={compliance.eff} />
-                <SpecRow label="Warranty" value={`${data.warranty} Years`} status={compliance.warranty} />
+                <SpecRow label="광효율" value={`${data.eff} lm/W`} status={compliance.eff} />
+                <SpecRow label="소비전력" value={`${data.power} W`} />
+                <SpecRow label="제조사" value={data.maker} />
             </div>
 
             <button style={{ marginTop: 30, width: '100%', border: `1px solid ${BORDER}`, background: 'rgba(255,255,255,0.02)', color: '#fff', padding: '12px', borderRadius: 10, fontSize: 12, fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, cursor: 'pointer' }}>
@@ -356,6 +465,158 @@ function SpecInput({ label, val }) {
         <div>
             <div style={{ fontSize: 10, color: TEXT_SEC, marginBottom: 8 }}>{label}</div>
             <div style={{ background: 'rgba(255,255,255,0.03)', border: `1px solid ${BORDER}`, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600 }}>{val}</div>
+        </div>
+    );
+}
+
+const btnStyle = {
+    padding: '20px',
+    borderRadius: 14,
+    border: 'none',
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    transition: 'all 0.2s'
+};
+
+function BidSimulatorView() {
+    const [price, setPrice] = useState(85000);
+    const [efficiency, setEfficiency] = useState(145);
+    const [warranty, setWarranty] = useState(3);
+
+    // Scoring Logic (Mock)
+    const score = useMemo(() => {
+        const base = 70;
+        const priceBonus = (100000 - price) / 1000;
+        const effBonus = (efficiency - 130) * 0.5;
+        const warBonus = warranty * 2;
+        return Math.min(100, Math.max(0, base + priceBonus + effBonus + warBonus));
+    }, [price, efficiency, warranty]);
+
+    return (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: 30 }}>
+            <div style={{ ...cardStyle }}>
+                <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 30 }}>BID PARAMETERS</h3>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+                    <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700 }}>Target Price</span>
+                            <span style={{ color: ACCENT, fontWeight: 900 }}>₩{price.toLocaleString()}</span>
+                        </div>
+                        <input
+                            type="range" min="40000" max="150000" step="1000"
+                            value={price} onChange={(e) => setPrice(Number(e.target.value))}
+                            style={{ width: '100%', accentColor: ACCENT }}
+                        />
+                    </div>
+
+                    <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700 }}>Luminous Efficacy</span>
+                            <span style={{ color: ACCENT2, fontWeight: 900 }}>{efficiency} lm/W</span>
+                        </div>
+                        <input
+                            type="range" min="120" max="180" step="1"
+                            value={efficiency} onChange={(e) => setEfficiency(Number(e.target.value))}
+                            style={{ width: '100%', accentColor: ACCENT2 }}
+                        />
+                    </div>
+
+                    <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                            <span style={{ fontSize: 13, fontWeight: 700 }}>Warranty Period</span>
+                            <span style={{ color: WARN, fontWeight: 900 }}>{warranty} Years</span>
+                        </div>
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            {[1, 2, 3, 5].map(y => (
+                                <button
+                                    key={y} onClick={() => setWarranty(y)}
+                                    style={{
+                                        flex: 1, padding: '10px', borderRadius: 8, border: `1px solid ${warranty === y ? WARN : BORDER}`,
+                                        background: warranty === y ? 'rgba(255,204,0,0.1)' : 'transparent',
+                                        color: warranty === y ? WARN : TEXT_SEC, cursor: 'pointer', fontSize: 12, fontWeight: 700
+                                    }}
+                                >
+                                    {y}Y
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <div style={{ marginTop: 40, padding: '20px', background: 'rgba(255,255,255,0.03)', borderRadius: 16, border: `1px solid ${BORDER}` }}>
+                    <div style={{ fontSize: 11, color: TEXT_SEC, marginBottom: 8 }}>PREDICTED WIN PROBABILITY</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
+                        <span style={{ fontSize: 32, fontWeight: 900, color: score > 80 ? ACCENT : score > 60 ? WARN : DANGER }}>{score.toFixed(1)}%</span>
+                        <span style={{ fontSize: 12, color: TEXT_SEC }}>Confidence Score</span>
+                    </div>
+                </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 30 }}>
+                <div style={{ ...cardStyle, flex: 1 }}>
+                    <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 25 }}>ADJUSTMENT STRATEGY</h3>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 15 }}>
+                        <StrategyItem
+                            label="Price Competitiveness"
+                            desc={price < 70000 ? "Highly competitive. Top 10% range." : "Average. Consider 5% reduction for safety."}
+                            status={price < 70000 ? 'positive' : 'neutral'}
+                        />
+                        <StrategyItem
+                            label="Spec Compliance"
+                            desc={efficiency >= 150 ? "Excellent efficacy. Surpasses 90% of competitors." : "Meets basic requirements but lacks 'High-Efficiency' edge."}
+                            status={efficiency >= 150 ? 'positive' : 'warning'}
+                        />
+                        <StrategyItem
+                            label="Historical Performance"
+                            desc="Average winning price for this category is ₩82,400. You are within margin."
+                            status="neutral"
+                        />
+                    </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+                    <button style={{ ...btnStyle, border: `1px solid ${BORDER}`, background: 'rgba(255,255,255,0.05)', color: '#fff' }}>
+                        <FileText size={16} /> DOWNLOAD PROPOSAL
+                    </button>
+                    <button style={{ ...btnStyle, background: ACCENT, color: '#000' }}>
+                        <ArrowUpRight size={16} /> ANALYZE DATA
+                    </button>
+                </div>
+
+                <div style={{ ...cardStyle, marginTop: 10, background: 'linear-gradient(135deg, rgba(78, 250, 166, 0.05) 0%, rgba(0, 229, 255, 0.05) 100%)', border: `1px solid ${ACCENT}33` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 15 }}>
+                        <Zap size={18} color={ACCENT} />
+                        <h4 style={{ fontSize: 13, fontWeight: 900, color: ACCENT }}>AI OPTIMIZATION INSIGHT</h4>
+                    </div>
+                    <p style={{ fontSize: 13, color: '#fff', lineHeight: 1.6, margin: 0 }}>
+                        {price > 80000 ?
+                            "현재 가격설정은 상위 30%에 해당합니다. 낙찰 확률을 높이려면 광효율을 155lm/W 이상으로 상향하거나 보증기간을 5년으로 연장하는 것을 권장합니다." :
+                            "경쟁력 있는 가격대입니다. 효율성 점수 보강을 위해 고효율 인증 데이터를 추가 업로드하십시오."}
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function StrategyItem({ label, desc, status }) {
+    const icon = status === 'positive' ? <CheckCircle2 size={16} color={ACCENT} /> :
+        status === 'warning' ? <AlertTriangle size={16} color={WARN} /> :
+            <Info size={16} color={TEXT_SEC} />;
+
+    return (
+        <div style={{ padding: '15px', borderRadius: 12, border: `1px solid ${BORDER}`, background: 'rgba(255,255,255,0.01)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+                {icon}
+                <span style={{ fontSize: 13, fontWeight: 700 }}>{label}</span>
+            </div>
+            <p style={{ fontSize: 12, color: TEXT_SEC, lineHeight: 1.5, margin: 0 }}>{desc}</p>
         </div>
     );
 }

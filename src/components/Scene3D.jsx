@@ -404,6 +404,15 @@ function CameraRig() {
 }
 
 // ─── 메인 ─────────────────────────────────────────────────────────────
+function LoadingState() {
+    return (
+        <mesh>
+            <sphereGeometry args={[0.5, 16, 16]} />
+            <meshBasicMaterial color="#00e5ff" wireframe opacity={0.1} transparent />
+        </mesh>
+    )
+}
+
 export default function Scene3D() {
     return (
         <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}>
@@ -429,7 +438,7 @@ export default function Scene3D() {
                 <pointLight position={[0.3, 0.5, 0.2]} intensity={1.5} color="#0088ff" distance={3} decay={2} />
                 <pointLight position={[-0.3, -0.2, 0.3]} intensity={1.2} color="#00ddff" distance={3} decay={2} />
 
-                <Suspense fallback={null}>
+                <Suspense fallback={<LoadingState />}>
                     {/* 뇌 모델 */}
                     <BrainModel />
                     <BrainWireframe />

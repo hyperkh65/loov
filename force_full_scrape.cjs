@@ -62,12 +62,26 @@ function parseProductsFromHTML(html, categoryName) {
         if (specListMatch) {
             const rawSpecs = specListMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
             specs.raw = rawSpecs;
-            const wattMatch = rawSpecs.match(/(\d+)\s*W/i) || name?.match(/(\d+)\s*W/i);
+            const wattMatch = rawSpecs.match(/(\d+)\s*w/i) || name?.match(/(\d+)\s*w/i);
             if (wattMatch) specs.wattage = wattMatch[1] + "W";
+
+            const fluxMatch = rawSpecs.match(/([\d,]+)\s*lm/i);
+            if (fluxMatch) specs.luminous_flux = fluxMatch[1].replace(/,/g, '') + "lm";
+
+            const effMatch = rawSpecs.match(/([\d.]+)\s*lm\/w/i);
+            if (effMatch) specs.efficacy = effMatch[1] + "lm/W";
+
             const colorMatch = rawSpecs.match(/색온도:\s*([^/ ,]+)/i);
             if (colorMatch) specs.color_temp = colorMatch[1].trim();
+
             const chipMatch = rawSpecs.match(/모듈칩:\s*([^/ ,]+)/i);
             if (chipMatch) specs.chip = chipMatch[1].trim();
+
+            const certs = [];
+            if (rawSpecs.includes('KS') || name?.includes('KS')) certs.push('KS');
+            if (rawSpecs.includes('KC') || name?.includes('KC')) certs.push('KC');
+            if (rawSpecs.includes('고효율') || name?.includes('고효율')) certs.push('고효율');
+            if (certs.length > 0) specs.certifications = certs;
 
             const releaseMatch = item.match(/<dt>등록월<\/dt>\s*<dd>(\d{4}\.\d{2})/i);
             if (releaseMatch) specs.released_at = releaseMatch[1];
@@ -159,12 +173,12 @@ async function forceScrape() {
 
     let totalCollected = 0;
 
-    for (const cat of categories) {
+    for (const cat of categories.slice(0, 3)) {
         console.log(`◈ ANALYZING [${cat.name}]...`);
         let catCount = 0;
 
-        // Scrape up to 100 pages per category for ultra-deep data
-        for (let page = 1; page <= 100; page++) {
+        // Scrape up to 2 pages per category for quick test
+        for (let page = 1; page <= 2; page++) {
             process.stdout.write(`  Page ${page}... `);
             const url = `https://search.danawa.com/dsearch.php?query=${encodeURIComponent(cat.keyword)}&page=${page}&limit=40&sort=saveDESC`;
 

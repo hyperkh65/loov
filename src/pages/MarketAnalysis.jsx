@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Activity, BarChart3, TrendingUp, Filter, Plus, Database, Globe } from 'lucide-react'
+import { Activity, BarChart3, TrendingUp, Filter, Plus, Database, Globe, ArrowUpRight } from 'lucide-react'
 
 export default function MarketAnalysis() {
+    const navigate = useNavigate()
     const [data, setData] = useState([])
     const [loading, setLoading] = useState(true)
     const [stats, setStats] = useState({ total: 0, analysis: 0, procurement: 0 })
@@ -94,6 +96,22 @@ export default function MarketAnalysis() {
                         <p style={{ color: 'var(--text-muted)', fontSize: 16 }}>LOOV Intelligence Dashboard v2.0</p>
                     </div>
                     <div className="flex gap-4">
+                        <button
+                            onClick={() => navigate('/procurement')}
+                            className="flex items-center gap-2"
+                            style={{
+                                background: 'var(--accent)',
+                                color: '#000',
+                                padding: '8px 16px',
+                                borderRadius: '8px',
+                                fontWeight: 700,
+                                fontSize: 13,
+                                border: 'none',
+                                cursor: 'pointer'
+                            }}
+                        >
+                            <ArrowUpRight size={18} /> G2B 조달 분석
+                        </button>
                         <button className="btn-ghost flex items-center gap-2">
                             <Globe size={18} /> Global Sync
                         </button>
